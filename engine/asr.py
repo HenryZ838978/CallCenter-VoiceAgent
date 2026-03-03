@@ -31,7 +31,7 @@ class SenseVoiceASR:
         result = self._model.generate(
             input=audio,
             cache={},
-            language="auto",
+            language="zh",
             use_itn=True,
             batch_size_s=60,
         )

@@ -8,3 +8,4 @@ __pycache__/
 .cache/
 cloudflared
 *.egg-info/
+gh

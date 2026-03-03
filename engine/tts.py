@@ -69,18 +69,32 @@ class VoxCPMTTS:
         if pid:
             kwargs["prompt_id"] = pid
 
+        chunk_idx = 0
         for audio_chunk in self._engine.generate(**kwargs):
-            if ttfa is None:
-                ttfa = (time.perf_counter() - t0) * 1000
             if isinstance(audio_chunk, np.ndarray):
-                chunks.append(audio_chunk)
+                c = audio_chunk
             elif hasattr(audio_chunk, 'numpy'):
-                chunks.append(audio_chunk.numpy())
+                c = audio_chunk.numpy()
             else:
-                chunks.append(np.array(audio_chunk, dtype=np.float32))
+                c = np.array(audio_chunk, dtype=np.float32)
+
+            chunk_idx += 1
+            if chunk_idx == 1:
+                ttfa = (time.perf_counter() - t0) * 1000
+                # Skip first chunk entirely — VoxCPM VAE has startup transient
+                continue
+
+            if chunk_idx == 2:
+                # Fade-in on the second chunk (now the first audible one)
+                fade = int(self.SAMPLE_RATE * 0.01)
+                if len(c) > fade:
+                    c[:fade] *= np.linspace(0, 1, fade, dtype=c.dtype)
+
+            chunks.append(c)
 
         total = (time.perf_counter() - t0) * 1000
         audio_out = np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
+
         return {
             "audio": audio_out,
             "sr": self.SAMPLE_RATE,
