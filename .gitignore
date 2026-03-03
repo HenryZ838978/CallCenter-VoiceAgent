@@ -1,0 +1,10 @@
+models/
+certs/
+data/*.wav
+data/rag_index*
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+cloudflared
+*.egg-info/
