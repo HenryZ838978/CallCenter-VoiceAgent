@@ -138,6 +138,7 @@ let calling = false, agentState = 'idle';
 let playCtx = null, nextPlayTime = 0;
 let currentAssistantDiv = null;
 let ignoreAudio = false;
+let bargeHintCount = 0;
 
 function $(id) { return document.getElementById(id); }
 
@@ -200,6 +201,10 @@ function connectWS() {
         break;
       case 'state':
         setAgentState(msg.state);
+        if (msg.state === 'idle' || msg.state === 'listening') {
+          ignoreAudio = false;
+          bargeHintCount = 0;
+        }
         break;
       case 'asr':
         if (msg.text) {
@@ -307,11 +312,20 @@ async function toggleCall() {
     const source = audioCtx.createMediaStreamSource(mediaStream);
     workletNode = new AudioWorkletNode(audioCtx, 'pcm-sender');
     workletNode.port.onmessage = (e) => {
-      const shouldSend = agentState !== 'speaking';
-      if (ws && ws.readyState === 1 && shouldSend) ws.send(e.data);
+      if (ws && ws.readyState === 1) ws.send(e.data);
       const arr = new Int16Array(e.data);
       let sum = 0; for (let i = 0; i < arr.length; i++) sum += Math.abs(arr[i]);
-      $('vuBar').style.width = Math.min(100, (sum / arr.length / 32768) * 300) + '%';
+      const rms = sum / arr.length / 32768;
+      $('vuBar').style.width = Math.min(100, rms * 300) + '%';
+      if (agentState === 'speaking' && rms > 0.03) {
+        bargeHintCount++;
+        if (bargeHintCount >= 3) {
+          stopPlayback();
+          bargeHintCount = 0;
+        }
+      } else if (agentState !== 'speaking') {
+        bargeHintCount = 0;
+      }
     };
     source.connect(workletNode);
     workletNode.connect(audioCtx.destination);

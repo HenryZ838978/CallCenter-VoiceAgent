@@ -1,19 +1,18 @@
-"""Production Conversation Manager — state machine for natural full-duplex voice agent.
+"""Production Conversation Manager v2.1 — enhanced full-duplex with robust barge-in.
+
+Changes from v2.0:
+  - Barge-in: high VAD threshold (0.85) + RMS energy gate + 3-chunk confirmation window
+  - THINKING state buffers user speech instead of discarding
+  - Adaptive endpointing: short utterances → fast, long utterances → patient
+  - TTS cancel granularity: 200ms → 50ms chunks
+  - Frontend now sends audio always (echo suppression via server-side filtering)
 
 States:
   IDLE       → waiting for user
   LISTENING  → user is speaking, buffering audio
-  THINKING   → user done, playing filler, running pipeline
+  THINKING   → user done, running pipeline (buffers late speech)
   SPEAKING   → streaming TTS playback
   INTERRUPTED→ user spoke during AI speech, collecting new input
-
-Flow:
-  IDLE → LISTENING (user starts speaking)
-  LISTENING → THINKING (endpointing: silence > threshold + ASR text looks complete)
-  THINKING → SPEAKING (first TTS chunk ready)
-  SPEAKING → INTERRUPTED (user starts speaking during AI output)
-  SPEAKING → LISTENING (TTS finished, ready for next turn)
-  INTERRUPTED → THINKING (user stops, aggregate intent)
 """
 import re
 import time
@@ -36,10 +35,25 @@ class State(Enum):
     INTERRUPTED = "interrupted"
 
 
-ENDPOINTING_SILENCE_CHUNKS = 8    # ~256ms at 32ms/chunk
-INTERRUPT_SILENCE_CHUNKS = 10     # ~320ms before processing interrupted speech
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 512               # 32ms
+CHUNK_MS = 32
+
+INTERRUPT_SILENCE_CHUNKS = 10     # ~320ms before processing interrupted speech
+
+BARGE_IN_VAD_THRESHOLD = 0.85
+BARGE_IN_RMS_THRESHOLD = 0.015
+BARGE_IN_CONFIRM_CHUNKS = 3       # ~96ms consecutive confirmation
+
+ENDPOINT_FAST_CHUNKS = 6          # ~192ms for short utterances (<0.5s)
+ENDPOINT_DEFAULT_CHUNKS = 10      # ~320ms for normal utterances
+ENDPOINT_SLOW_CHUNKS = 20         # ~640ms for long utterances (>3s)
+
+TTS_SEND_CHUNK_BYTES = 2205 * 2   # ~50ms at 44.1kHz 16-bit
+
+
+def _rms(chunk: np.ndarray) -> float:
+    return float(np.sqrt(np.mean(chunk ** 2)))
 
 
 class ConversationManager:
@@ -60,12 +74,19 @@ class ConversationManager:
         self._speaking_task: Optional[asyncio.Task] = None
         self._cancel_speaking = asyncio.Event()
 
+        self._barge_confirm_count = 0
+        self._thinking_extra_buffer = []
+        self._thinking_has_speech = False
+
     def reset(self):
         self.state = State.IDLE
         self._audio_buffer = []
         self._interrupted_texts = []
         self._silence_count = 0
         self._turn = 0
+        self._barge_confirm_count = 0
+        self._thinking_extra_buffer = []
+        self._thinking_has_speech = False
         self.vad.reset()
         self.llm.reset()
         if self._speaking_task and not self._speaking_task.done():
@@ -81,10 +102,12 @@ class ConversationManager:
 
     async def _process_chunk(self, chunk: np.ndarray):
         vad_result = self.vad.process_chunk(chunk, SAMPLE_RATE)
-        is_speech = vad_result["speech_prob"] >= 0.5
+        speech_prob = vad_result["speech_prob"]
+        is_speech = speech_prob >= 0.5
+        rms = _rms(chunk)
 
         if self.state == State.IDLE:
-            if is_speech:
+            if is_speech and rms > 0.01:
                 self.state = State.LISTENING
                 self._audio_buffer = [chunk]
                 self._silence_count = 0
@@ -97,21 +120,29 @@ class ConversationManager:
             else:
                 self._audio_buffer.append(chunk)
                 self._silence_count += 1
-                if self._silence_count >= ENDPOINTING_SILENCE_CHUNKS:
+                threshold = self._adaptive_endpoint_threshold()
+                if self._silence_count >= threshold:
                     await self._on_endpointing()
 
         elif self.state == State.SPEAKING:
-            if is_speech:
-                self._silence_count = 0
-                if not self._cancel_speaking.is_set():
-                    self._cancel_speaking.set()
-                    self.state = State.INTERRUPTED
-                    self._audio_buffer = [chunk]
-                    await self._send({"type": "barge_in", "turn": self._turn})
-                    await self._send({"type": "state", "state": "interrupted"})
-                else:
-                    self._audio_buffer.append(chunk)
-            # ignore silence during SPEAKING
+            is_real_speech = (
+                speech_prob >= BARGE_IN_VAD_THRESHOLD
+                and rms > BARGE_IN_RMS_THRESHOLD
+            )
+            if is_real_speech:
+                self._barge_confirm_count += 1
+                if self._barge_confirm_count >= BARGE_IN_CONFIRM_CHUNKS:
+                    if not self._cancel_speaking.is_set():
+                        self._cancel_speaking.set()
+                        self.state = State.INTERRUPTED
+                        self._audio_buffer = [chunk]
+                        self._barge_confirm_count = 0
+                        await self._send({"type": "barge_in", "turn": self._turn})
+                        await self._send({"type": "state", "state": "interrupted"})
+                    else:
+                        self._audio_buffer.append(chunk)
+            else:
+                self._barge_confirm_count = 0
 
         elif self.state == State.INTERRUPTED:
             if is_speech:
@@ -124,13 +155,29 @@ class ConversationManager:
                     await self._on_endpointing()
 
         elif self.state == State.THINKING:
-            if is_speech:
-                pass  # ignore speech during thinking (filler is playing)
+            if is_speech and rms > 0.01:
+                self._thinking_extra_buffer.append(chunk)
+                self._thinking_has_speech = True
+            elif self._thinking_has_speech:
+                self._thinking_extra_buffer.append(chunk)
+
+    def _adaptive_endpoint_threshold(self) -> int:
+        """Shorter utterances get faster endpointing, longer ones get more patience."""
+        audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
+        if audio_duration_ms < 500:
+            return ENDPOINT_FAST_CHUNKS
+        elif audio_duration_ms > 3000:
+            return ENDPOINT_SLOW_CHUNKS
+        else:
+            return ENDPOINT_DEFAULT_CHUNKS
 
     async def _on_endpointing(self):
         """User finished speaking — start pipeline."""
         self.state = State.THINKING
         self._silence_count = 0
+        self._barge_confirm_count = 0
+        self._thinking_extra_buffer = []
+        self._thinking_has_speech = False
         self._turn += 1
         await self._send({"type": "state", "state": "thinking"})
 
@@ -140,21 +187,28 @@ class ConversationManager:
         asyncio.create_task(self._run_pipeline(audio, self._turn))
 
     async def _run_pipeline(self, audio: np.ndarray, turn: int):
-        """Full pipeline: filler → ASR → RAG → LLM(streaming) → TTS(per-sentence) → play."""
+        """Full pipeline: ASR → (merge late speech) → RAG → LLM(streaming) → TTS(per-sentence) → play."""
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
 
-        # 1. Filler disabled for now — short TTS fillers sound mechanical.
-        # TODO: re-enable with real human-recorded filler audio
-        # filler_text, filler_audio = self.filler.get_filler()
-        # if filler_audio:
-        #     await self._send({"type": "filler", "text": filler_text, "turn": turn})
-        #     await self._send_audio(filler_audio)
-
-        # 2. ASR
+        # 1. ASR
         asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
         user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
         asr_ms = asr_result["latency_ms"]
+
+        # 1b. Check if user spoke more during ASR processing
+        if self._thinking_has_speech and self._thinking_extra_buffer:
+            extra_audio = np.concatenate(self._thinking_extra_buffer)
+            self._thinking_extra_buffer = []
+            self._thinking_has_speech = False
+            if len(extra_audio) > CHUNK_SAMPLES * 3:
+                extra_result = await loop.run_in_executor(None, self.asr.transcribe, extra_audio)
+                extra_text = _ASR_TAG_RE.sub("", extra_result["text"]).strip()
+                if extra_text and len(extra_text) >= 2:
+                    user_text = f"{user_text}，{extra_text}" if user_text else extra_text
+                    asr_ms += extra_result["latency_ms"]
+                    log.info("[Turn %d] Merged late speech: '%s'", turn, extra_text)
+
         await self._send({"type": "asr", "text": user_text, "latency_ms": round(asr_ms, 1), "turn": turn})
 
         if not user_text or len(user_text) < 2:
@@ -162,7 +216,7 @@ class ConversationManager:
             await self._send({"type": "state", "state": "idle"})
             return
 
-        # 3. Check for interrupted texts to aggregate
+        # 2. Check for interrupted texts to aggregate
         if self._interrupted_texts:
             combined = "；".join(self._interrupted_texts + [user_text])
             user_text = f"用户依次说了：{combined}。请自然地综合回应。"
@@ -171,7 +225,7 @@ class ConversationManager:
             if asr_ms > 0:
                 self._interrupted_texts = []
 
-        # 4. RAG
+        # 3. RAG
         rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
         rag_context = rag_result["context"]
         rag_ms = rag_result["total_ms"]
@@ -180,8 +234,9 @@ class ConversationManager:
             "latency_ms": round(rag_ms, 1), "turn": turn,
         })
 
-        # 5. LLM streaming → TTS per sentence → play
+        # 4. LLM streaming → TTS per sentence → play
         self._cancel_speaking.clear()
+        self._barge_confirm_count = 0
         self.state = State.SPEAKING
         await self._send({"type": "state", "state": "speaking"})
 
@@ -190,16 +245,13 @@ class ConversationManager:
         )
 
     async def _stream_llm_tts(self, user_text, rag_context, turn, t_start, asr_ms, rag_ms):
-        """True streaming: LLM yields sentences via queue → TTS per sentence → play.
-        Cancel is checked between every sentence and every audio chunk.
-        """
+        """True streaming: LLM yields sentences via queue → TTS per sentence → play."""
         loop = asyncio.get_event_loop()
         sentence_queue = asyncio.Queue()
         full_response = ""
         sentence_count = 0
 
         def _produce_sentences():
-            """Runs in thread: streams LLM and puts sentences into async queue."""
             for s in self.llm.stream_sentences(user_text, rag_context=rag_context):
                 if self._cancel_speaking.is_set():
                     break
@@ -275,12 +327,11 @@ class ConversationManager:
 
     async def _send_audio(self, audio_bytes: bytes):
         """Send audio in small chunks, checking cancel between each."""
-        chunk_size = 8820 * 2  # ~200ms at 44.1kHz 16-bit — small enough for responsive cancel
-        for i in range(0, len(audio_bytes), chunk_size):
+        for i in range(0, len(audio_bytes), TTS_SEND_CHUNK_BYTES):
             if self._cancel_speaking.is_set():
                 return
-            await self._send({"_audio": audio_bytes[i:i + chunk_size]})
-            await asyncio.sleep(0.005)
+            await self._send({"_audio": audio_bytes[i:i + TTS_SEND_CHUNK_BYTES]})
+            await asyncio.sleep(0.002)
 
     async def handle_text_input(self, text: str):
         """Handle text input (skip ASR)."""
@@ -299,6 +350,7 @@ class ConversationManager:
         })
 
         self._cancel_speaking.clear()
+        self._barge_confirm_count = 0
         self.state = State.SPEAKING
         await self._send({"type": "state", "state": "speaking"})
 
