@@ -30,6 +30,10 @@ from config import (
     EMBED_MODEL_DIR, KB_DATA_PATH, RAG_TOP_K,
     SYSTEM_PROMPT_RAG, VOICE_PROMPT_WAV, VOICE_PROMPT_TEXT,
 )
+CAPTIONER_URL = os.environ.get("CAPTIONER_URL", "")
+CAPTIONER_MODEL = os.environ.get("CAPTIONER_MODEL", "MiniCPM-o-4.5-awq")
+USE_SPEAKER_VAD = os.environ.get("USE_SPEAKER_VAD", "0") == "1"
+SPEAKER_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "spkrec-ecapa-voxceleb")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("voxlabs")
@@ -51,9 +55,18 @@ def load_engines():
 
     log.info("=== Loading engines (v2.0) ===")
 
-    log.info("Loading VAD...")
-    engine["vad_template"] = SileroVAD(VAD_MODEL_DIR, threshold=0.5)
-    engine["vad_template"].load()
+    if USE_SPEAKER_VAD:
+        from engine.speaker_vad import SpeakerAwareVAD
+        log.info("Loading SpeakerAwareVAD (Silero + ECAPA-TDNN)...")
+        engine["vad_type"] = "speaker"
+        svad = SpeakerAwareVAD(VAD_MODEL_DIR, SPEAKER_MODEL_DIR, threshold=0.5)
+        svad.load(device="cpu")
+        engine["vad_template"] = svad
+    else:
+        log.info("Loading VAD (Silero)...")
+        engine["vad_type"] = "silero"
+        engine["vad_template"] = SileroVAD(VAD_MODEL_DIR, threshold=0.5)
+        engine["vad_template"].load()
 
     log.info("Loading ASR (SenseVoice)...")
     engine["asr"] = SenseVoiceASR(ASR_MODEL_DIR, device=ASR_DEVICE)
@@ -94,7 +107,18 @@ def load_engines():
     filler.pregenerate()
     engine["filler"] = filler
 
-    log.info("=== All engines loaded (v2.0) ===")
+    if CAPTIONER_URL:
+        from engine.captioner import OmniCaptioner
+        log.info("Loading Captioner (OmniCaptioner @ %s)...", CAPTIONER_URL)
+        engine["captioner"] = OmniCaptioner(
+            base_url=CAPTIONER_URL, model=CAPTIONER_MODEL,
+        ).load()
+    else:
+        from engine.captioner import HeuristicCaptioner
+        log.info("Using HeuristicCaptioner (no CAPTIONER_URL set)")
+        engine["captioner"] = HeuristicCaptioner()
+
+    log.info("=== All engines loaded (v2.2) ===")
 
 
 app = FastAPI(title="VoxLabs Voice Agent v2.0")
@@ -160,11 +184,16 @@ async def ws_voice(ws: WebSocket):
     session_id = f"s-{int(time.time() * 1000)}"
     log.info("[%s] Connected", session_id)
 
-    from engine.vad import SileroVAD
     from engine.conversation_manager import ConversationManager
 
-    vad = SileroVAD(VAD_MODEL_DIR, threshold=0.5)
-    vad.load()
+    if engine.get("vad_type") == "speaker":
+        from engine.speaker_vad import SpeakerAwareVAD
+        vad = SpeakerAwareVAD(VAD_MODEL_DIR, SPEAKER_MODEL_DIR, threshold=0.5)
+        vad.load(device="cpu")
+    else:
+        from engine.vad import SileroVAD
+        vad = SileroVAD(VAD_MODEL_DIR, threshold=0.5)
+        vad.load()
 
     llm = engine["llm_factory"]()
 
@@ -181,6 +210,7 @@ async def ws_voice(ws: WebSocket):
         asr=engine["asr"], llm=llm, tts=engine["tts"],
         rag=engine["rag"], vad=vad, filler=engine["filler"],
         send_fn=send_fn,
+        captioner=engine.get("captioner"),
     )
 
     await send_fn({"type": "ready", "session_id": session_id, "version": "2.0"})

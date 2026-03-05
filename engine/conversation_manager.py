@@ -1,11 +1,9 @@
-"""Production Conversation Manager v2.1 — enhanced full-duplex with robust barge-in.
+"""Production Conversation Manager v2.2 — speculative inference + paralinguistic awareness.
 
-Changes from v2.0:
-  - Barge-in: high VAD threshold (0.85) + RMS energy gate + 3-chunk confirmation window
-  - THINKING state buffers user speech instead of discarding
-  - Adaptive endpointing: short utterances → fast, long utterances → patient
-  - TTS cancel granularity: 200ms → 50ms chunks
-  - Frontend now sends audio always (echo suppression via server-side filtering)
+Changes from v2.1:
+  - Speculative ASR: starts after 150ms silence, before endpointing confirmed
+  - Paralinguistic captioner: optional audio scene description injected into LLM prompt
+  - All v2.1 features preserved (dual-layer barge-in, adaptive endpointing, THINKING buffer)
 
 States:
   IDLE       → waiting for user
@@ -49,6 +47,8 @@ ENDPOINT_FAST_CHUNKS = 6          # ~192ms for short utterances (<0.5s)
 ENDPOINT_DEFAULT_CHUNKS = 10      # ~320ms for normal utterances
 ENDPOINT_SLOW_CHUNKS = 20         # ~640ms for long utterances (>3s)
 
+SPECULATIVE_ASR_CHUNKS = 5        # ~160ms silence → start speculative ASR
+
 TTS_SEND_CHUNK_BYTES = 2205 * 2   # ~50ms at 44.1kHz 16-bit
 
 
@@ -57,13 +57,15 @@ def _rms(chunk: np.ndarray) -> float:
 
 
 class ConversationManager:
-    def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable]):
+    def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable],
+                 captioner=None):
         self.asr = asr
         self.llm = llm
         self.tts = tts
         self.rag = rag
         self.vad = vad
         self.filler = filler
+        self.captioner = captioner
         self._send = send_fn
 
         self.state = State.IDLE
@@ -78,6 +80,10 @@ class ConversationManager:
         self._thinking_extra_buffer = []
         self._thinking_has_speech = False
 
+        self._spec_asr_task: Optional[asyncio.Task] = None
+        self._spec_asr_result: Optional[dict] = None
+        self._spec_asr_audio_len = 0
+
     def reset(self):
         self.state = State.IDLE
         self._audio_buffer = []
@@ -87,10 +93,18 @@ class ConversationManager:
         self._barge_confirm_count = 0
         self._thinking_extra_buffer = []
         self._thinking_has_speech = False
+        self._cancel_speculative_asr()
         self.vad.reset()
         self.llm.reset()
         if self._speaking_task and not self._speaking_task.done():
             self._speaking_task.cancel()
+
+    def _cancel_speculative_asr(self):
+        if self._spec_asr_task and not self._spec_asr_task.done():
+            self._spec_asr_task.cancel()
+        self._spec_asr_task = None
+        self._spec_asr_result = None
+        self._spec_asr_audio_len = 0
 
     async def feed_audio(self, samples: np.ndarray):
         """Feed raw PCM samples (float32, 16kHz). Called per WebSocket message."""
@@ -111,24 +125,40 @@ class ConversationManager:
                 self.state = State.LISTENING
                 self._audio_buffer = [chunk]
                 self._silence_count = 0
+                self._cancel_speculative_asr()
                 await self._send({"type": "state", "state": "listening"})
 
         elif self.state == State.LISTENING:
             if is_speech:
                 self._audio_buffer.append(chunk)
                 self._silence_count = 0
+                if self._spec_asr_task:
+                    self._cancel_speculative_asr()
             else:
                 self._audio_buffer.append(chunk)
                 self._silence_count += 1
+
+                if (self._silence_count == SPECULATIVE_ASR_CHUNKS
+                        and self._spec_asr_task is None
+                        and len(self._audio_buffer) > CHUNK_SAMPLES):
+                    self._launch_speculative_asr()
+
                 threshold = self._adaptive_endpoint_threshold()
                 if self._silence_count >= threshold:
                     await self._on_endpointing()
 
         elif self.state == State.SPEAKING:
-            is_real_speech = (
-                speech_prob >= BARGE_IN_VAD_THRESHOLD
-                and rms > BARGE_IN_RMS_THRESHOLD
-            )
+            has_speaker_vad = vad_result.get("is_target_speaker") is not None
+            if has_speaker_vad:
+                is_real_speech = (
+                    vad_result.get("is_target_speaker", False)
+                    and rms > BARGE_IN_RMS_THRESHOLD
+                )
+            else:
+                is_real_speech = (
+                    speech_prob >= BARGE_IN_VAD_THRESHOLD
+                    and rms > BARGE_IN_RMS_THRESHOLD
+                )
             if is_real_speech:
                 self._barge_confirm_count += 1
                 if self._barge_confirm_count >= BARGE_IN_CONFIRM_CHUNKS:
@@ -161,8 +191,25 @@ class ConversationManager:
             elif self._thinking_has_speech:
                 self._thinking_extra_buffer.append(chunk)
 
+    def _launch_speculative_asr(self):
+        """Fire-and-forget ASR on current buffer snapshot. Result cached for _run_pipeline."""
+        audio_snapshot = np.concatenate(self._audio_buffer) if self._audio_buffer else None
+        if audio_snapshot is None or len(audio_snapshot) < CHUNK_SAMPLES * 3:
+            return
+        self._spec_asr_audio_len = len(audio_snapshot)
+
+        async def _run():
+            loop = asyncio.get_event_loop()
+            try:
+                result = await loop.run_in_executor(None, self.asr.transcribe, audio_snapshot)
+                self._spec_asr_result = result
+            except Exception:
+                self._spec_asr_result = None
+
+        self._spec_asr_task = asyncio.create_task(_run())
+        log.debug("Speculative ASR launched on %d samples", len(audio_snapshot))
+
     def _adaptive_endpoint_threshold(self) -> int:
-        """Shorter utterances get faster endpointing, longer ones get more patience."""
         audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
         if audio_duration_ms < 500:
             return ENDPOINT_FAST_CHUNKS
@@ -184,19 +231,48 @@ class ConversationManager:
         audio = np.concatenate(self._audio_buffer) if self._audio_buffer else np.array([], dtype=np.float32)
         self._audio_buffer = []
 
-        asyncio.create_task(self._run_pipeline(audio, self._turn))
+        spec_result = self._spec_asr_result
+        spec_audio_len = self._spec_asr_audio_len
+        spec_task = self._spec_asr_task
+        self._spec_asr_result = None
+        self._spec_asr_task = None
+        self._spec_asr_audio_len = 0
 
-    async def _run_pipeline(self, audio: np.ndarray, turn: int):
-        """Full pipeline: ASR → (merge late speech) → RAG → LLM(streaming) → TTS(per-sentence) → play."""
+        asyncio.create_task(self._run_pipeline(audio, self._turn, spec_result, spec_audio_len, spec_task))
+
+    async def _run_pipeline(self, audio: np.ndarray, turn: int,
+                            spec_result: Optional[dict], spec_audio_len: int,
+                            spec_task: Optional[asyncio.Task]):
+        """Full pipeline: (speculative) ASR → paralinguistic → RAG → LLM(streaming) → TTS → play."""
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
 
-        # 1. ASR
-        asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
-        user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
-        asr_ms = asr_result["latency_ms"]
+        # 1. ASR — use speculative result if audio hasn't grown much
+        audio_grew = len(audio) > spec_audio_len * 1.15 if spec_audio_len > 0 else True
 
-        # 1b. Check if user spoke more during ASR processing
+        if spec_task and not spec_task.done():
+            try:
+                await asyncio.wait_for(spec_task, timeout=0.2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                spec_result = None
+
+        if spec_result and not audio_grew:
+            user_text = _ASR_TAG_RE.sub("", spec_result["text"]).strip()
+            asr_ms = spec_result["latency_ms"]
+            log.info("[Turn %d] Used speculative ASR (saved ~%dms)", turn, round(asr_ms))
+            asr_ms = 0.0
+        else:
+            asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
+            user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
+            asr_ms = asr_result["latency_ms"]
+
+        # 1b. Auto-enroll speaker on first turn (for SpeakerAwareVAD)
+        if turn == 1 and hasattr(self.vad, 'enroll_speaker') and not self.vad.is_enrolled:
+            if len(audio) >= 8000:
+                self.vad.enroll_speaker(audio)
+                log.info("[Turn %d] Speaker auto-enrolled from first utterance", turn)
+
+        # 1c. Merge late speech from THINKING state
         if self._thinking_has_speech and self._thinking_extra_buffer:
             extra_audio = np.concatenate(self._thinking_extra_buffer)
             self._thinking_extra_buffer = []
@@ -216,7 +292,7 @@ class ConversationManager:
             await self._send({"type": "state", "state": "idle"})
             return
 
-        # 2. Check for interrupted texts to aggregate
+        # 2. Interrupted text aggregation
         if self._interrupted_texts:
             combined = "；".join(self._interrupted_texts + [user_text])
             user_text = f"用户依次说了：{combined}。请自然地综合回应。"
@@ -225,7 +301,27 @@ class ConversationManager:
             if asr_ms > 0:
                 self._interrupted_texts = []
 
-        # 3. RAG
+        # 3. Paralinguistic captioner (optional, async, non-blocking with timeout)
+        caption = ""
+        caption_ms = 0.0
+        if self.captioner and len(audio) >= SAMPLE_RATE:
+            try:
+                t_cap = time.perf_counter()
+                caption = await asyncio.wait_for(
+                    loop.run_in_executor(None, self.captioner.describe, audio),
+                    timeout=0.5
+                )
+                caption_ms = (time.perf_counter() - t_cap) * 1000
+                log.info("[Turn %d] Captioner: '%s' (%.0fms)", turn, caption, caption_ms)
+                await self._send({
+                    "type": "caption", "text": caption,
+                    "latency_ms": round(caption_ms, 1), "turn": turn,
+                })
+            except (asyncio.TimeoutError, Exception) as e:
+                log.warning("[Turn %d] Captioner failed/timeout: %s", turn, e)
+                caption = ""
+
+        # 4. RAG
         rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
         rag_context = rag_result["context"]
         rag_ms = rag_result["total_ms"]
@@ -234,14 +330,19 @@ class ConversationManager:
             "latency_ms": round(rag_ms, 1), "turn": turn,
         })
 
-        # 4. LLM streaming → TTS per sentence → play
+        # 5. Inject caption into user text for LLM
+        llm_user_text = user_text
+        if caption:
+            llm_user_text = f"[语音观察：{caption}]\n用户说：{user_text}"
+
+        # 6. LLM streaming → TTS per sentence → play
         self._cancel_speaking.clear()
         self._barge_confirm_count = 0
         self.state = State.SPEAKING
         await self._send({"type": "state", "state": "speaking"})
 
         self._speaking_task = asyncio.create_task(
-            self._stream_llm_tts(user_text, rag_context, turn, t_start, asr_ms, rag_ms)
+            self._stream_llm_tts(llm_user_text, rag_context, turn, t_start, asr_ms, rag_ms)
         )
 
     async def _stream_llm_tts(self, user_text, rag_context, turn, t_start, asr_ms, rag_ms):
