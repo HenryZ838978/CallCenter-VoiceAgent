@@ -210,21 +210,32 @@ LLM 根据用户 **怎么说**（不只是说了什么）调整回复策略。
 
 ---
 
-## Pipeline vs End-to-End Omni
+## 三种方案对比
 
-同硬件 (RTX 4090) 对比 MiniCPM-o-4.5 (9B):
+同硬件 (RTX 4090) 实测，三种架构各有优势：
 
 <table align="center">
-<tr><th>维度</th><th>Pipeline (本项目)</th><th>Omni (MiniCPM-o-4.5)</th></tr>
-<tr><td>首响延迟</td><td><b>458ms ✅</b></td><td>1666ms ❌</td></tr>
-<tr><td>VRAM</td><td><b>17.6GB (2 GPU)</b></td><td>21.5GB (1 GPU)</td></tr>
-<tr><td>RAG 集成</td><td><b>3.6ms (向量检索)</b></td><td>+305ms (prompt 嵌入)</td></tr>
-<tr><td>换音色</td><td><b>LoRA / clone, 小时级</b></td><td>重训整个模型</td></tr>
-<tr><td>换话术</td><td><b>SFT, ~$20</b></td><td>多模态 SFT, ~$5000+</td></tr>
-<tr><td>换组件</td><td><b>替换单个模块</b></td><td>全部重训</td></tr>
+<tr><th>维度</th><th>Pipeline (本项目)</th><th>Hybrid (姊妹项目)</th><th>纯 Omni (raw)</th></tr>
+<tr><td>架构</td><td>ASR → RAG → LLM → TTS</td><td><b>vLLM Omni AWQ → VoxCPM TTS</b></td><td>MiniCPM-o-4.5 端到端</td></tr>
+<tr><td>首响延迟</td><td>458ms ✅</td><td><b>~250ms ✅✅</b></td><td>1666ms ❌</td></tr>
+<tr><td>VRAM</td><td>17.6GB (2 GPU)</td><td><b>10.5+7 GB (2 GPU)</b></td><td>21.5GB (1 GPU)</td></tr>
+<tr><td>RAG 集成</td><td><b>3.6ms (向量检索)</b></td><td>3.6ms (向量检索)</td><td>+305ms (prompt 嵌入)</td></tr>
+<tr><td>打断自然度</td><td>双层打断 + 声纹 VAD</td><td>双层打断 + 声纹 VAD</td><td><b>模型原生理解</b></td></tr>
+<tr>
+<td colspan="4" style="padding:8px 0;"><b>灵活性 — Pipeline 核心优势</b></td>
+</tr>
+<tr><td>换音色</td><td><b>LoRA / clone, 小时级</b></td><td><b>VoxCPM clone, 小时级</b></td><td>重训整个模型</td></tr>
+<tr><td>换话术</td><td><b>LLM SFT, ~$20</b></td><td>需 Omni 多模态 SFT</td><td>多模态 SFT, ~$5000+</td></tr>
+<tr><td>换 ASR</td><td><b>替换 engine/asr.py</b></td><td>绑定 Whisper-medium</td><td>绑定内置 ASR</td></tr>
+<tr><td>换 LLM</td><td><b>任何 OpenAI 兼容</b></td><td>绑定 MiniCPM-o</td><td>绑定内置 LLM</td></tr>
+<tr><td>换 TTS</td><td><b>替换 engine/tts.py</b></td><td><b>替换 TTS 模块</b></td><td>绑定内置 TTS</td></tr>
+<tr><td>多客户定制</td><td><b>配置级, 分钟上线</b></td><td>需切换 Omni 模型</td><td>每客户一个模型变体</td></tr>
 </table>
 
-**实时场景 (< 500ms 目标)：Pipeline 架构完胜。**
+**选型建议：**
+- **追求极致延迟** → Hybrid (250ms)：[Hybrid-VoiceAgent](https://github.com/HenryZ838978/Hybrid-VoiceAgent)
+- **追求灵活定制** → Pipeline (458ms)：本项目，各组件独立替换、LLM 自由 SFT、多客户配置化
+- **研究/Demo** → 纯 Omni：一个模型搞定一切，但延迟和定制成本高
 
 ### 可扩展性
 
