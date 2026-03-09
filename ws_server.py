@@ -33,7 +33,13 @@ from config import (
 CAPTIONER_URL = os.environ.get("CAPTIONER_URL", "")
 CAPTIONER_MODEL = os.environ.get("CAPTIONER_MODEL", "MiniCPM-o-4.5-awq")
 USE_SPEAKER_VAD = os.environ.get("USE_SPEAKER_VAD", "0") == "1"
+USE_FIRERED_VAD = os.environ.get("USE_FIRERED_VAD", "0") == "1"
+USE_MOONSHINE_ASR = os.environ.get("USE_MOONSHINE_ASR", "0") == "1"
+USE_FIRERED_ASR = os.environ.get("USE_FIRERED_ASR", "0") == "1"
+USE_SMART_TURN = os.environ.get("USE_SMART_TURN", "0") == "1"
 SPEAKER_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "spkrec-ecapa-voxceleb")
+FIRERED_VAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedVAD-stream")
+FIRERED_ASR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedASR2-AED")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("voxlabs")
@@ -55,7 +61,13 @@ def load_engines():
 
     log.info("=== Loading engines (v2.0) ===")
 
-    if USE_SPEAKER_VAD:
+    if USE_FIRERED_VAD:
+        from engine.firered_vad import FireRedVADWrapper
+        log.info("Loading FireRedVAD (F1=97.57%%, false alarm 2.69%%)...")
+        engine["vad_type"] = "firered"
+        engine["vad_template"] = FireRedVADWrapper(FIRERED_VAD_DIR, threshold=0.5)
+        engine["vad_template"].load()
+    elif USE_SPEAKER_VAD:
         from engine.speaker_vad import SpeakerAwareVAD
         log.info("Loading SpeakerAwareVAD (Silero + ECAPA-TDNN)...")
         engine["vad_type"] = "speaker"
@@ -68,9 +80,31 @@ def load_engines():
         engine["vad_template"] = SileroVAD(VAD_MODEL_DIR, threshold=0.5)
         engine["vad_template"].load()
 
-    log.info("Loading ASR (SenseVoice)...")
-    engine["asr"] = SenseVoiceASR(ASR_MODEL_DIR, device=ASR_DEVICE)
-    engine["asr"].load()
+    if USE_MOONSHINE_ASR:
+        from engine.asr_moonshine import MoonshineASR
+        log.info("Loading Moonshine Tiny (speculative ASR, 27M, ONNX CPU)...")
+        engine["spec_asr"] = MoonshineASR(model_name="moonshine/tiny")
+        engine["spec_asr"].load()
+    else:
+        engine["spec_asr"] = None
+
+    if USE_SMART_TURN:
+        from engine.turn_detector import SmartTurnDetector
+        log.info("Loading Smart Turn Detector (Pipecat v3, 8M ONNX)...")
+        engine["turn_detector"] = SmartTurnDetector()
+        engine["turn_detector"].load()
+    else:
+        engine["turn_detector"] = None
+
+    if USE_FIRERED_ASR:
+        from engine.asr_firered import FireRedASR
+        log.info("Loading ASR (FireRedASR2-AED, CER 2.89%%)...")
+        engine["asr"] = FireRedASR(FIRERED_ASR_DIR, device=ASR_DEVICE)
+        engine["asr"].load()
+    else:
+        log.info("Loading ASR (SenseVoice)...")
+        engine["asr"] = SenseVoiceASR(ASR_MODEL_DIR, device=ASR_DEVICE)
+        engine["asr"].load()
 
     log.info("Loading RAG (bge-small-zh-v1.5)...")
     rag = RAGEngine(EMBED_MODEL_DIR, device=RAG_DEVICE, top_k=RAG_TOP_K)
@@ -89,7 +123,8 @@ def load_engines():
     )
 
     log.info("Loading TTS (VoxCPM nanovllm)...")
-    tts = VoxCPMTTS(TTS_MODEL_DIR, device=TTS_DEVICE, gpu_memory_utilization=0.55)
+    tts_util = float(os.environ.get("TTS_GPU_UTIL", "0.45"))
+    tts = VoxCPMTTS(TTS_MODEL_DIR, device=TTS_DEVICE, gpu_memory_utilization=tts_util)
     tts.load()
 
     if os.path.exists(VOICE_PROMPT_WAV):
@@ -186,7 +221,12 @@ async def ws_voice(ws: WebSocket):
 
     from engine.conversation_manager import ConversationManager
 
-    if engine.get("vad_type") == "speaker":
+    vad_type = engine.get("vad_type", "silero")
+    if vad_type == "firered":
+        from engine.firered_vad import FireRedVADWrapper
+        vad = FireRedVADWrapper(FIRERED_VAD_DIR, threshold=0.5)
+        vad.load()
+    elif vad_type == "speaker":
         from engine.speaker_vad import SpeakerAwareVAD
         vad = SpeakerAwareVAD(VAD_MODEL_DIR, SPEAKER_MODEL_DIR, threshold=0.5)
         vad.load(device="cpu")
@@ -211,6 +251,8 @@ async def ws_voice(ws: WebSocket):
         rag=engine["rag"], vad=vad, filler=engine["filler"],
         send_fn=send_fn,
         captioner=engine.get("captioner"),
+        spec_asr=engine.get("spec_asr"),
+        turn_detector=engine.get("turn_detector"),
     )
 
     await send_fn({"type": "ready", "session_id": session_id, "version": "2.0"})

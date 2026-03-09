@@ -49,7 +49,7 @@ ENDPOINT_SLOW_CHUNKS = 20         # ~640ms for long utterances (>3s)
 
 SPECULATIVE_ASR_CHUNKS = 5        # ~160ms silence → start speculative ASR
 
-TTS_SEND_CHUNK_BYTES = 2205 * 2   # ~50ms at 44.1kHz 16-bit
+TTS_SEND_CHUNK_BYTES = 8820 * 2   # ~200ms at 44.1kHz 16-bit (larger chunks for network stability)
 
 
 def _rms(chunk: np.ndarray) -> float:
@@ -58,7 +58,7 @@ def _rms(chunk: np.ndarray) -> float:
 
 class ConversationManager:
     def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable],
-                 captioner=None):
+                 captioner=None, spec_asr=None, turn_detector=None):
         self.asr = asr
         self.llm = llm
         self.tts = tts
@@ -66,6 +66,8 @@ class ConversationManager:
         self.vad = vad
         self.filler = filler
         self.captioner = captioner
+        self.spec_asr = spec_asr
+        self.turn_detector = turn_detector
         self._send = send_fn
 
         self.state = State.IDLE
@@ -134,6 +136,8 @@ class ConversationManager:
                 self._silence_count = 0
                 if self._spec_asr_task:
                     self._cancel_speculative_asr()
+                if self.turn_detector:
+                    self.turn_detector.reset()
             else:
                 self._audio_buffer.append(chunk)
                 self._silence_count += 1
@@ -143,9 +147,15 @@ class ConversationManager:
                         and len(self._audio_buffer) > CHUNK_SAMPLES):
                     self._launch_speculative_asr()
 
-                threshold = self._adaptive_endpoint_threshold()
-                if self._silence_count >= threshold:
-                    await self._on_endpointing()
+                if self.turn_detector and self._silence_count >= SPECULATIVE_ASR_CHUNKS:
+                    if self._check_smart_turn():
+                        await self._on_endpointing()
+                    elif self._silence_count >= ENDPOINT_SLOW_CHUNKS:
+                        await self._on_endpointing()
+                else:
+                    threshold = self._adaptive_endpoint_threshold()
+                    if self._silence_count >= threshold:
+                        await self._on_endpointing()
 
         elif self.state == State.SPEAKING:
             has_speaker_vad = vad_result.get("is_target_speaker") is not None
@@ -192,22 +202,35 @@ class ConversationManager:
                 self._thinking_extra_buffer.append(chunk)
 
     def _launch_speculative_asr(self):
-        """Fire-and-forget ASR on current buffer snapshot. Result cached for _run_pipeline."""
+        """Fire-and-forget ASR on current buffer snapshot. Result cached for _run_pipeline.
+        Uses Moonshine (27M, CPU, ~20ms) if available, otherwise falls back to main ASR.
+        """
         audio_snapshot = np.concatenate(self._audio_buffer) if self._audio_buffer else None
         if audio_snapshot is None or len(audio_snapshot) < CHUNK_SAMPLES * 3:
             return
         self._spec_asr_audio_len = len(audio_snapshot)
+        asr_engine = self.spec_asr if self.spec_asr else self.asr
 
         async def _run():
             loop = asyncio.get_event_loop()
             try:
-                result = await loop.run_in_executor(None, self.asr.transcribe, audio_snapshot)
+                result = await loop.run_in_executor(None, asr_engine.transcribe, audio_snapshot)
                 self._spec_asr_result = result
             except Exception:
                 self._spec_asr_result = None
 
         self._spec_asr_task = asyncio.create_task(_run())
-        log.debug("Speculative ASR launched on %d samples", len(audio_snapshot))
+        engine_name = "Moonshine" if self.spec_asr else "SenseVoice"
+        log.debug("Speculative ASR (%s) launched on %d samples", engine_name, len(audio_snapshot))
+
+    def _check_smart_turn(self) -> bool:
+        """Ask the Smart Turn detector if the user is done speaking."""
+        if not self.turn_detector or len(self._audio_buffer) < 3:
+            return False
+        try:
+            return self.turn_detector.should_endpoint(self._audio_buffer, is_speech_active=False)
+        except Exception:
+            return False
 
     def _adaptive_endpoint_threshold(self) -> int:
         audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
@@ -427,12 +450,15 @@ class ConversationManager:
                 await self._send({"type": "state", "state": "idle"})
 
     async def _send_audio(self, audio_bytes: bytes):
-        """Send audio in small chunks, checking cancel between each."""
+        """Send audio in chunks, checking cancel between each.
+        Uses larger chunks (200ms) for network stability over Cloudflare tunnels,
+        with periodic yield to keep the event loop responsive for keepalive.
+        """
         for i in range(0, len(audio_bytes), TTS_SEND_CHUNK_BYTES):
             if self._cancel_speaking.is_set():
                 return
             await self._send({"_audio": audio_bytes[i:i + TTS_SEND_CHUNK_BYTES]})
-            await asyncio.sleep(0.002)
+            await asyncio.sleep(0)
 
     async def handle_text_input(self, text: str):
         """Handle text input (skip ASR)."""

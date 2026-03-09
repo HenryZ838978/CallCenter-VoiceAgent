@@ -182,6 +182,7 @@ function updateLatency(d) {
 }
 
 function connectWS() {
+  if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws/voice`);
   ws.binaryType = 'arraybuffer';
@@ -229,6 +230,7 @@ function connectWS() {
         break;
       case 'llm':
         currentAssistantDiv = null;
+        drainPlayback();
         break;
       case 'metrics':
         updateLatency(msg);
@@ -255,30 +257,58 @@ async function initPlayer() {
   if (playerReady) return;
   playCtx = new AudioContext({ sampleRate: SR_OUT });
   const code = `
-class QueuePlayer extends AudioWorkletProcessor {
+class JitterBufferPlayer extends AudioWorkletProcessor {
   constructor() {
     super();
     this.queue = [];
+    this.totalSamples = 0;
     this.cur = null;
     this.pos = 0;
+    this.state = 'idle';
+    this.targetSamples = Math.floor(44100 * 0.15);
+    this.draining = false;
     this.port.onmessage = (e) => {
-      if (e.data === 'flush') { this.queue = []; this.cur = null; this.pos = 0; return; }
-      this.queue.push(new Float32Array(e.data));
+      if (e.data === 'flush') {
+        this.queue = []; this.totalSamples = 0;
+        this.cur = null; this.pos = 0;
+        this.state = 'idle'; this.draining = false;
+        return;
+      }
+      if (e.data === 'drain') { this.draining = true; return; }
+      const f32 = new Float32Array(e.data);
+      this.queue.push(f32);
+      this.totalSamples += f32.length;
+      if (this.state === 'idle') this.state = 'buffering';
+      if (this.state === 'buffering' && this.totalSamples >= this.targetSamples) {
+        this.state = 'playing';
+      }
     };
   }
   process(inputs, outputs) {
     const out = outputs[0][0];
+    if (this.state !== 'playing') {
+      out.fill(0);
+      return true;
+    }
     for (let i = 0; i < out.length; i++) {
       if (!this.cur || this.pos >= this.cur.length) {
-        this.cur = this.queue.length > 0 ? this.queue.shift() : null;
-        this.pos = 0;
+        if (this.queue.length > 0) {
+          this.cur = this.queue.shift();
+          this.totalSamples -= this.cur.length;
+          this.pos = 0;
+        } else {
+          this.cur = null; this.pos = 0;
+          if (this.draining) { this.state = 'idle'; this.draining = false; }
+          out.fill(0, i);
+          return true;
+        }
       }
-      out[i] = this.cur ? this.cur[this.pos++] : 0;
+      out[i] = this.cur[this.pos++];
     }
     return true;
   }
 }
-registerProcessor('queue-player', QueuePlayer);
+registerProcessor('queue-player', JitterBufferPlayer);
 `;
   await playCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], {type:'application/javascript'})));
   playerNode = new AudioWorkletNode(playCtx, 'queue-player');
@@ -291,10 +321,13 @@ function playAudio(buffer) {
   const int16 = new Int16Array(buffer);
   const f32 = new Float32Array(int16.length);
   for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
-  playerNode.port.postMessage(f32);
+  playerNode.port.postMessage(f32.buffer, [f32.buffer]);
 }
 function stopPlayback() {
   if (playerNode) playerNode.port.postMessage('flush');
+}
+function drainPlayback() {
+  if (playerNode) playerNode.port.postMessage('drain');
 }
 
 async function toggleCall() {
