@@ -37,6 +37,8 @@ USE_FIRERED_VAD = os.environ.get("USE_FIRERED_VAD", "0") == "1"
 USE_MOONSHINE_ASR = os.environ.get("USE_MOONSHINE_ASR", "0") == "1"
 USE_FIRERED_ASR = os.environ.get("USE_FIRERED_ASR", "0") == "1"
 USE_SMART_TURN = os.environ.get("USE_SMART_TURN", "0") == "1"
+USE_DENOISE = os.environ.get("USE_DENOISE", "0") == "1"
+DTLN_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "dtln")
 SPEAKER_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "spkrec-ecapa-voxceleb")
 FIRERED_VAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedVAD-stream")
 FIRERED_ASR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedASR2-AED")
@@ -87,6 +89,14 @@ def load_engines():
         engine["spec_asr"].load()
     else:
         engine["spec_asr"] = None
+
+    if USE_DENOISE:
+        from engine.denoiser import DTLNDenoiser
+        log.info("Loading DTLN Denoiser (4MB ONNX, ~8ms/block)...")
+        engine["denoiser"] = DTLNDenoiser(DTLN_MODEL_DIR)
+        engine["denoiser"].load()
+    else:
+        engine["denoiser"] = None
 
     if USE_SMART_TURN:
         from engine.turn_detector import SmartTurnDetector
@@ -253,6 +263,7 @@ async def ws_voice(ws: WebSocket):
         captioner=engine.get("captioner"),
         spec_asr=engine.get("spec_asr"),
         turn_detector=engine.get("turn_detector"),
+        denoiser=engine.get("denoiser"),
     )
 
     await send_fn({"type": "ready", "session_id": session_id, "version": "2.0"})

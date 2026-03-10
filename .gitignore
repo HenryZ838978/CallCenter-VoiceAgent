@@ -9,3 +9,6 @@ __pycache__/
 cloudflared
 *.egg-info/
 gh
+livekit-server
+livekit.yaml
+engine/fireredasr2/__pycache__/

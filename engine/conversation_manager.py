@@ -39,9 +39,9 @@ CHUNK_MS = 32
 
 INTERRUPT_SILENCE_CHUNKS = 10     # ~320ms before processing interrupted speech
 
-BARGE_IN_VAD_THRESHOLD = 0.85
-BARGE_IN_RMS_THRESHOLD = 0.015
-BARGE_IN_CONFIRM_CHUNKS = 3       # ~96ms consecutive confirmation
+BARGE_IN_VAD_THRESHOLD = 0.6
+BARGE_IN_RMS_THRESHOLD = 0.008
+BARGE_IN_CONFIRM_CHUNKS = 2       # ~64ms consecutive confirmation
 
 ENDPOINT_FAST_CHUNKS = 6          # ~192ms for short utterances (<0.5s)
 ENDPOINT_DEFAULT_CHUNKS = 10      # ~320ms for normal utterances
@@ -58,7 +58,7 @@ def _rms(chunk: np.ndarray) -> float:
 
 class ConversationManager:
     def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable],
-                 captioner=None, spec_asr=None, turn_detector=None):
+                 captioner=None, spec_asr=None, turn_detector=None, denoiser=None):
         self.asr = asr
         self.llm = llm
         self.tts = tts
@@ -68,6 +68,7 @@ class ConversationManager:
         self.captioner = captioner
         self.spec_asr = spec_asr
         self.turn_detector = turn_detector
+        self.denoiser = denoiser
         self._send = send_fn
 
         self.state = State.IDLE
@@ -158,6 +159,14 @@ class ConversationManager:
                         await self._on_endpointing()
 
         elif self.state == State.SPEAKING:
+            if not hasattr(self, '_speak_log_count'):
+                self._speak_log_count = 0
+            self._speak_log_count += 1
+            if self._speak_log_count <= 5 or (speech_prob > 0.3 and self._speak_log_count % 10 == 0):
+                log.info("[SPEAKING] chunk %d: vad=%.2f rms=%.4f threshold=%.2f/%.4f",
+                         self._speak_log_count, speech_prob, rms,
+                         BARGE_IN_VAD_THRESHOLD, BARGE_IN_RMS_THRESHOLD)
+
             has_speaker_vad = vad_result.get("is_target_speaker") is not None
             if has_speaker_vad:
                 is_real_speech = (
@@ -266,9 +275,14 @@ class ConversationManager:
     async def _run_pipeline(self, audio: np.ndarray, turn: int,
                             spec_result: Optional[dict], spec_audio_len: int,
                             spec_task: Optional[asyncio.Task]):
-        """Full pipeline: (speculative) ASR → paralinguistic → RAG → LLM(streaming) → TTS → play."""
+        """Full pipeline: denoise → (speculative) ASR → paralinguistic → RAG → LLM(streaming) → TTS → play."""
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
+
+        # 0. Denoise (if available)
+        if self.denoiser and len(audio) > CHUNK_SAMPLES * 3:
+            audio = await loop.run_in_executor(None, self.denoiser.process, audio)
+            log.info("[Turn %d] Denoised %d samples", turn, len(audio))
 
         # 1. ASR — use speculative result if audio hasn't grown much
         audio_grew = len(audio) > spec_audio_len * 1.15 if spec_audio_len > 0 else True
@@ -369,7 +383,7 @@ class ConversationManager:
         )
 
     async def _stream_llm_tts(self, user_text, rag_context, turn, t_start, asr_ms, rag_ms):
-        """True streaming: LLM yields sentences via queue → TTS per sentence → play."""
+        """Streaming: LLM sentences → TTS per-chunk streaming → send each chunk with cancel check."""
         loop = asyncio.get_event_loop()
         sentence_queue = asyncio.Queue()
         full_response = ""
@@ -382,8 +396,16 @@ class ConversationManager:
                 asyncio.run_coroutine_threadsafe(sentence_queue.put(s), loop)
             asyncio.run_coroutine_threadsafe(sentence_queue.put(None), loop)
 
+        def _tts_stream_sentence(text):
+            """Generator: yields TTS chunks one at a time."""
+            chunks = []
+            for chunk_data in self.tts.synthesize_stream(text):
+                chunks.append(chunk_data)
+            return chunks
+
         try:
             loop.run_in_executor(None, _produce_sentences)
+            first_ttfa = None
 
             while True:
                 if self._cancel_speaking.is_set():
@@ -410,29 +432,34 @@ class ConversationManager:
                 if self._cancel_speaking.is_set():
                     break
 
-                tts_result = await loop.run_in_executor(
-                    None, lambda sent=sentence: self.tts.synthesize(sent)
+                tts_chunks = await loop.run_in_executor(
+                    None, _tts_stream_sentence, sentence
                 )
 
-                if sentence_count == 1:
-                    first_response_ms = asr_ms + rag_ms + s["ttfs_ms"] + tts_result["ttfa_ms"]
-                    await self._send({
-                        "type": "metrics",
-                        "asr_ms": round(asr_ms, 1),
-                        "rag_ms": round(rag_ms, 1),
-                        "llm_ms": round(s["ttfs_ms"], 1),
-                        "tts_ttfa_ms": round(tts_result["ttfa_ms"], 1),
-                        "first_response_ms": round(first_response_ms, 1),
-                        "turn": turn,
-                    })
+                for i, chunk_data in enumerate(tts_chunks):
+                    if self._cancel_speaking.is_set():
+                        log.info("[Turn %d] Cancelled mid-TTS chunk %d/%d", turn, i, len(tts_chunks))
+                        break
 
-                if self._cancel_speaking.is_set():
-                    break
+                    if sentence_count == 1 and i == 0:
+                        first_ttfa = chunk_data.get("ttfa_ms", 0)
+                        await self._send({"type": "audio_start", "turn": turn})
+                        first_response_ms = asr_ms + rag_ms + s["ttfs_ms"] + first_ttfa
+                        await self._send({
+                            "type": "metrics",
+                            "asr_ms": round(asr_ms, 1),
+                            "rag_ms": round(rag_ms, 1),
+                            "llm_ms": round(s["ttfs_ms"], 1),
+                            "tts_ttfa_ms": round(first_ttfa, 1),
+                            "first_response_ms": round(first_response_ms, 1),
+                            "turn": turn,
+                        })
 
-                audio_data = tts_result["audio"]
-                if audio_data.dtype != np.int16:
-                    audio_data = (np.clip(audio_data, -1, 1) * 32767).astype(np.int16)
-                await self._send_audio(audio_data.tobytes())
+                    audio = chunk_data["audio"]
+                    if audio.dtype != np.int16:
+                        audio = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
+                    await self._send({"_audio": audio.tobytes()})
+                    await asyncio.sleep(0.05)
 
             await self._send({
                 "type": "llm", "text": full_response,

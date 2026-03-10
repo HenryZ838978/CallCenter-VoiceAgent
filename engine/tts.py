@@ -102,3 +102,41 @@ class VoxCPMTTS:
             "total_ms": total,
             "chunks": len(chunks),
         }
+
+    def synthesize_stream(self, text: str, prompt_id: str = None):
+        """Streaming TTS: yields individual audio chunks as they are generated.
+        Each yield is a dict with 'audio' (np.ndarray), 'chunk_idx', 'ttfa_ms'.
+        Caller can check cancel between chunks for responsive barge-in.
+        """
+        t0 = time.perf_counter()
+        ttfa = None
+
+        pid = prompt_id or self._default_prompt_id
+        kwargs = {"target_text": text, "temperature": 0.7, "cfg_value": 3.0}
+        if pid:
+            kwargs["prompt_id"] = pid
+
+        chunk_idx = 0
+        for audio_chunk in self._engine.generate(**kwargs):
+            if isinstance(audio_chunk, np.ndarray):
+                c = audio_chunk
+            elif hasattr(audio_chunk, 'numpy'):
+                c = audio_chunk.numpy()
+            else:
+                c = np.array(audio_chunk, dtype=np.float32)
+
+            chunk_idx += 1
+            if chunk_idx == 1:
+                ttfa = (time.perf_counter() - t0) * 1000
+                continue
+
+            if chunk_idx == 2:
+                fade = int(self.SAMPLE_RATE * 0.01)
+                if len(c) > fade:
+                    c[:fade] *= np.linspace(0, 1, fade, dtype=c.dtype)
+
+            yield {
+                "audio": c,
+                "chunk_idx": chunk_idx,
+                "ttfa_ms": ttfa if chunk_idx == 2 else 0,
+            }

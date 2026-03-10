@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxLabs Voice Agent — LiveKit WebRTC</title>
+<style>
+:root { --bg:#0a0e1a; --surface:#111827; --border:#2a3350; --text:#e2e8f0; --dim:#8892a8; --accent:#6c8cff; --green:#34d399; --red:#f87171; --yellow:#fbbf24; --purple:#a78bfa; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,'PingFang SC',sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+.container { max-width:600px; width:100%; }
+h1 { font-size:24px; background:linear-gradient(135deg,#6c8cff,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:4px; text-align:center; }
+.subtitle { color:var(--dim); font-size:13px; text-align:center; margin-bottom:24px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:16px; }
+.status { text-align:center; font-size:14px; color:var(--dim); margin-bottom:16px; }
+.status .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.status .dot.off { background:#555; }
+.status .dot.on { background:var(--green); animation:pulse 1s infinite; }
+@keyframes pulse { 50% { opacity:.5; } }
+.btn { display:block; width:100%; padding:14px; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; transition:all .15s; }
+.btn-connect { background:var(--green); color:#000; }
+.btn-connect:hover { opacity:.9; }
+.btn-disconnect { background:var(--red); color:#fff; }
+.btn-disconnect:hover { opacity:.9; }
+.chat { max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.msg { padding:8px 12px; border-radius:10px; font-size:14px; max-width:85%; animation:fadeIn .2s; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(4px); } }
+.msg.user { align-self:flex-end; background:var(--accent); color:#fff; }
+.msg.assistant { align-self:flex-start; background:#1a2236; border:1px solid var(--border); }
+.msg.system { align-self:center; color:var(--dim); font-size:12px; }
+.state-badge { display:inline-block; padding:3px 12px; border-radius:12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
+.state-idle { background:rgba(136,146,168,.15); color:var(--dim); }
+.state-listening { background:rgba(52,211,153,.15); color:var(--green); }
+.state-thinking { background:rgba(167,139,250,.15); color:var(--purple); }
+.state-speaking { background:rgba(108,140,255,.15); color:var(--accent); }
+.config { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+.config label { font-size:12px; color:var(--dim); }
+.config input { width:100%; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; }
+.vu { height:4px; background:var(--bg); border-radius:2px; overflow:hidden; margin-top:8px; }
+.vu .bar { height:100%; width:0%; background:var(--green); transition:width 50ms; }
+.info { font-size:11px; color:var(--dim); text-align:center; margin-top:12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>VoxLabs Voice Agent</h1>
+  <p class="subtitle">LiveKit WebRTC — Zero-latency barge-in</p>
+
+  <div class="card">
+    <div class="status">
+      <span class="dot off" id="dot"></span>
+      <span id="statusText">Disconnected</span>
+      &nbsp;&nbsp;
+      <span class="state-badge state-idle" id="agentState">IDLE</span>
+    </div>
+    <div class="config">
+      <div><label>LiveKit URL</label><input id="lkUrl" value="ws://localhost:7880"></div>
+      <div><label>Token</label><input id="lkToken" placeholder="Paste token here"></div>
+    </div>
+    <button class="btn btn-connect" id="btnConnect" onclick="toggleConnection()">Connect</button>
+  </div>
+
+  <div class="card">
+    <div class="chat" id="chat"></div>
+    <div class="vu"><div class="bar" id="vuBar"></div></div>
+  </div>
+
+  <div class="info">
+    WebRTC: UDP/DTLS — no TCP in-flight frames — native barge-in<br>
+    Generate token: <code>python livekit_agent/token_gen.py</code>
+  </div>
+</div>
+
+<script type="module">
+import { Room, RoomEvent, Track, RemoteTrack, DisconnectReason } from 'https://esm.sh/livekit-client@2.11.3';
+
+const $ = id => document.getElementById(id);
+let room = null;
+let connected = false;
+
+function addMsg(role, text) {
+  const chat = $('chat');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function setStatus(on, text) {
+  $('dot').className = 'dot ' + (on ? 'on' : 'off');
+  $('statusText').textContent = text;
+}
+
+function setAgentState(state) {
+  const badge = $('agentState');
+  badge.className = 'state-badge state-' + state;
+  badge.textContent = state.toUpperCase();
+}
+
+window.toggleConnection = async function() {
+  if (connected) {
+    await room?.disconnect();
+    return;
+  }
+
+  const url = $('lkUrl').value.trim();
+  const token = $('lkToken').value.trim();
+  if (!url || !token) { addMsg('system', 'Enter LiveKit URL and token'); return; }
+
+  room = new Room();
+
+  room.on(RoomEvent.Connected, () => {
+    connected = true;
+    setStatus(true, 'Connected');
+    $('btnConnect').textContent = 'Disconnect';
+    $('btnConnect').className = 'btn btn-disconnect';
+    addMsg('system', 'Connected to room');
+  });
+
+  room.on(RoomEvent.Disconnected, (reason) => {
+    connected = false;
+    setStatus(false, 'Disconnected');
+    $('btnConnect').textContent = 'Connect';
+    $('btnConnect').className = 'btn btn-connect';
+    addMsg('system', 'Disconnected');
+  });
+
+  room.on(RoomEvent.DataReceived, (payload, participant, kind) => {
+    try {
+      const msg = JSON.parse(new TextDecoder().decode(payload));
+      if (msg.type === 'transcript' && msg.role === 'user') {
+        addMsg('user', msg.text);
+      } else if (msg.type === 'transcript' && msg.role === 'assistant') {
+        addMsg('assistant', msg.text);
+      } else if (msg.type === 'state') {
+        setAgentState(msg.state || 'idle');
+      } else if (msg.type === 'metrics') {
+        addMsg('system', `ASR ${msg.asr_ms||0}ms | LLM ${msg.llm_ms||0}ms | TTS ${msg.tts_ms||0}ms`);
+      }
+    } catch(e) {}
+  });
+
+  room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+    if (track.kind === Track.Kind.Audio) {
+      const el = track.attach();
+      document.body.appendChild(el);
+      addMsg('system', 'Agent audio connected');
+    }
+  });
+
+  room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+    const isUserSpeaking = speakers.some(s => s.isLocal);
+    $('vuBar').style.width = isUserSpeaking ? '60%' : '0%';
+  });
+
+  try {
+    await room.connect(url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    addMsg('system', 'Microphone enabled');
+  } catch(e) {
+    addMsg('system', 'Connection failed: ' + e.message);
+  }
+};
+</script>
+</body>
+</html>

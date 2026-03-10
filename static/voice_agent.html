@@ -138,7 +138,9 @@ let calling = false, agentState = 'idle';
 let playCtx = null, nextPlayTime = 0;
 let currentAssistantDiv = null;
 let ignoreAudio = false;
+let ignoreAudioUntil = 0;
 let bargeHintCount = 0;
+let playableTurn = -1;
 
 function $(id) { return document.getElementById(id); }
 
@@ -192,7 +194,7 @@ function connectWS() {
 
   ws.onmessage = (evt) => {
     if (evt.data instanceof ArrayBuffer) {
-      if (!ignoreAudio) playAudio(evt.data);
+      if (playableTurn !== 0 && !ignoreAudio) playAudio(evt.data);
       return;
     }
     const msg = JSON.parse(evt.data);
@@ -235,10 +237,13 @@ function connectWS() {
       case 'metrics':
         updateLatency(msg);
         break;
+      case 'audio_start':
+        playableTurn = msg.turn;
+        break;
       case 'barge_in':
         addMsg('system', '⚡ Interrupted');
-        ignoreAudio = true;
         stopPlayback();
+        playableTurn = 0;
         break;
       case 'error':
         addMsg('system', '⚠ ' + msg.message);
