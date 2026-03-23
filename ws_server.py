@@ -296,11 +296,16 @@ async def ws_voice(ws: WebSocket):
 if __name__ == "__main__":
     load_engines()
 
-    cert_dir = BASE_DIR / "certs"
     port = int(os.environ.get("PORT", "3000"))
-    log.info("Starting VoxLabs v2.0 on https://0.0.0.0:%d", port)
+    use_ssl = os.environ.get("USE_SSL", "0") == "1"
 
-    uvicorn.run(app, host="0.0.0.0", port=port,
-                ssl_certfile=str(cert_dir / "cert.pem"),
-                ssl_keyfile=str(cert_dir / "key.pem"),
-                log_level="info")
+    if use_ssl:
+        cert_dir = BASE_DIR / "certs"
+        log.info("Starting on https://0.0.0.0:%d (self-signed SSL)", port)
+        uvicorn.run(app, host="0.0.0.0", port=port,
+                    ssl_certfile=str(cert_dir / "cert.pem"),
+                    ssl_keyfile=str(cert_dir / "key.pem"),
+                    log_level="info")
+    else:
+        log.info("Starting on http://0.0.0.0:%d (SSL via Nginx reverse proxy)", port)
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

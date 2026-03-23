@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxLabs — LiveKit E2E Test</title>
+<style>
+:root {
+  --bg: #0b0f1a; --surface: #131928; --border: #1e2a45;
+  --text: #e2e8f0; --dim: #6b7a94; --green: #22c55e;
+  --red: #ef4444; --yellow: #eab308; --blue: #3b82f6;
+  --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'PingFang SC', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; min-height: 100vh; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--dim); font-size: 12px; margin-bottom: 20px; }
+.grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; max-width: 1200px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.panel h2 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-run { background: var(--blue); color: #fff; }
+.btn-all { background: var(--green); color: #000; width: 100%; padding: 10px; font-size: 14px; margin-bottom: 10px; }
+.test-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.test-item .name { flex: 1; font-size: 13px; }
+.test-item .desc { color: var(--dim); font-size: 11px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; font-family: var(--mono); min-width: 60px; text-align: center; }
+.badge-pending { background: rgba(107,122,148,.15); color: var(--dim); }
+.badge-running { background: rgba(59,130,246,.15); color: var(--blue); }
+.badge-pass { background: rgba(34,197,94,.15); color: var(--green); }
+.badge-fail { background: rgba(239,68,68,.15); color: var(--red); }
+.log { background: #0a0d14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log .ts { color: var(--dim); }
+.log .ok { color: var(--green); }
+.log .err { color: var(--red); }
+.log .info { color: var(--blue); }
+.log .warn { color: var(--yellow); }
+.diag { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.diag-item { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+.diag-item .label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
+.diag-item .value { font-size: 12px; font-family: var(--mono); margin-top: 2px; }
+.vu-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.vu-label { font-size: 11px; color: var(--dim); width: 40px; }
+.vu-bar-bg { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.vu-bar { height: 100%; width: 0%; background: var(--green); transition: width 80ms; }
+.summary { margin-top: 12px; padding: 12px; background: var(--bg); border-radius: 8px; font-size: 14px; text-align: center; max-width: 1200px; }
+audio { width: 100%; margin-top: 4px; height: 32px; }
+</style>
+</head>
+<body>
+
+<h1>VoxLabs LiveKit E2E Test</h1>
+<p class="subtitle">Browser-based end-to-end test — Web Audio API → WebRTC → TURN → Agent → Response</p>
+
+<div class="grid">
+  <div>
+    <div class="panel">
+      <h2>Test Scenarios</h2>
+      <button class="btn btn-all" id="btnRunAll" onclick="runAll()">Run All Tests</button>
+      <div id="testList"></div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h2>ICE / Network</h2>
+      <div class="diag">
+        <div class="diag-item"><div class="label">ICE State</div><div class="value" id="iceState">—</div></div>
+        <div class="diag-item"><div class="label">Conn Type</div><div class="value" id="iceType">—</div></div>
+        <div class="diag-item"><div class="label">Local</div><div class="value" id="iceLocal">—</div></div>
+        <div class="diag-item"><div class="label">Remote</div><div class="value" id="iceRemote">—</div></div>
+      </div>
+      <div class="diag">
+        <div class="diag-item"><div class="label">Room</div><div class="value" id="diagRoom">—</div></div>
+        <div class="diag-item"><div class="label">Participants</div><div class="value" id="diagParts">—</div></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h2>Audio Monitor</h2>
+      <div class="vu-row"><span class="vu-label">Agent</span><div class="vu-bar-bg"><div class="vu-bar" id="vuAgent"></div></div><span id="vuAgentDb" style="font-size:10px;color:var(--dim);width:45px;text-align:right">—</span></div>
+      <div id="audioContainer" style="margin-top:8px"><span style="color:var(--dim);font-size:11px">No audio yet</span></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel" style="height:100%">
+      <h2>Live Log</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<div class="summary" id="summary" style="max-width:1200px;margin-top:12px;display:none"></div>
+
+<script type="module">
+import { Room, RoomEvent, Track, ConnectionState } from 'https://esm.sh/livekit-client@2.11.3';
+
+const AGENT_WAIT_TIMEOUT = 60000;
+
+const TESTS = [
+  { id: 'basic_greeting',  name: 'Basic Greeting',    wav: 'test_audio/hello.wav',   desc: '"你好" → expect agent voice reply',     timeout: 45000 },
+  { id: 'service_inquiry', name: 'Service Inquiry',   wav: 'test_audio/service.wav',  desc: '"你们公司有什么服务" → expect reply',   timeout: 45000 },
+  { id: 'support_query',   name: 'Support Query',     wav: 'test_audio/support.wav',  desc: '"有技术支持吗" → expect reply',         timeout: 45000 },
+  { id: 'multi_turn',      name: 'Multi-Turn',        wavs: ['test_audio/hello.wav','test_audio/address.wav','test_audio/contact.wav'], desc: '3 turns, each expect reply', timeout: 120000 },
+  { id: 'silence_test',    name: 'Silence (negative)',wav: null,                      desc: 'No audio → agent should stay silent', timeout: 20000 },
+];
+
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+const results = {};
+
+function log(msg, cls = '') {
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+  logEl.innerHTML += `<span class="ts">[${ts}]</span> <span class="${cls}">${esc(msg)}</span>\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+function renderTests() {
+  $('testList').innerHTML = TESTS.map(t => `
+    <div class="test-item" id="ti-${t.id}">
+      <div><div class="name">${t.name}</div><div class="desc">${t.desc}</div></div>
+      <span class="badge badge-pending" id="badge-${t.id}">PENDING</span>
+      <button class="btn btn-run" id="btn-${t.id}" onclick="window._runSingle('${t.id}')">Run</button>
+    </div>`).join('');
+}
+renderTests();
+
+function setBadge(id, status, extra = '') {
+  const el = $(`badge-${id}`);
+  el.className = `badge badge-${status}`;
+  el.textContent = status.toUpperCase() + (extra ? ` ${extra}` : '');
+}
+function setDiag(id, val) { $(id).textContent = val; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchToken() {
+  const resp = await fetch('/livekit/token');
+  return await resp.json();
+}
+
+async function loadWav(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Failed to load ${url}: ${resp.status}`);
+  return await resp.arrayBuffer();
+}
+
+async function getIceInfo(room) {
+  try {
+    const pc = room.engine?.pcManager?.publisher?.pc || room.engine?.pcManager?.subscriber?.pc;
+    if (!pc) return null;
+    const stats = await pc.getStats();
+    let activePair = null, candidates = {};
+    stats.forEach(s => {
+      if (s.type === 'candidate-pair' && s.state === 'succeeded') activePair = s;
+      if (s.type === 'local-candidate' || s.type === 'remote-candidate') candidates[s.id] = s;
+    });
+    if (!activePair) return null;
+    return { local: candidates[activePair.localCandidateId], remote: candidates[activePair.remoteCandidateId], pair: activePair };
+  } catch { return null; }
+}
+
+async function waitForAgent(room, timeoutMs = AGENT_WAIT_TIMEOUT) {
+  if (room.remoteParticipants.size > 0) {
+    const agent = Array.from(room.remoteParticipants.values())[0];
+    log(`Agent already present: ${agent.identity}`, 'ok');
+    return true;
+  }
+  log(`Waiting for agent to join (max ${(timeoutMs/1000).toFixed(0)}s)...`, 'info');
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) { resolved = true; resolve(false); }
+    }, timeoutMs);
+    const onJoin = (p) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        log(`Agent joined: ${p.identity} — ready to receive audio`, 'ok');
+        resolve(true);
+      }
+    };
+    room.on(RoomEvent.ParticipantConnected, onJoin);
+  });
+}
+
+async function publishWavToRoom(room, wavArrayBuffer) {
+  const audioCtx = new AudioContext({ sampleRate: 48000 });
+  const audioBuffer = await audioCtx.decodeAudioData(wavArrayBuffer);
+  const bufSrc = audioCtx.createBufferSource();
+  bufSrc.buffer = audioBuffer;
+  const dest = audioCtx.createMediaStreamDestination();
+  bufSrc.connect(dest);
+  bufSrc.start();
+  const mediaTrack = dest.stream.getAudioTracks()[0];
+  const pub = await room.localParticipant.publishTrack(mediaTrack, {
+    source: Track.Source.Microphone, name: 'test-mic',
+  });
+  log(`Published audio: ${(audioBuffer.duration).toFixed(1)}s`, 'info');
+  return { audioCtx, bufSrc, pub, duration: audioBuffer.duration, mediaTrack };
+}
+
+async function unpublishTrack(room, pub, audioCtx, mediaTrack) {
+  try { await room.localParticipant.unpublishTrack(mediaTrack); } catch {}
+  try { audioCtx.close(); } catch {}
+}
+
+class AgentAudioMonitor {
+  constructor() {
+    this.trackSubscribed = false;
+    this.realAudioDetected = false;
+    this.firstAudioTime = null;
+    this.peakRms = 0;
+    this._analyser = null;
+    this._monitorCtx = null;
+    this._rafId = null;
+    this._audioEl = null;
+  }
+
+  onTrackSubscribed(track, participant) {
+    this.trackSubscribed = true;
+    log(`Agent track subscribed from ${participant.identity} (waiting for real audio...)`, 'info');
+
+    this._audioEl = track.attach();
+    this._audioEl.autoplay = true;
+    this._audioEl.volume = 1.0;
+    const container = $('audioContainer');
+    container.innerHTML = '';
+    this._audioEl.controls = true;
+    this._audioEl.style.cssText = 'width:100%;height:32px;margin-top:4px';
+    container.appendChild(this._audioEl);
+
+    try {
+      this._monitorCtx = new AudioContext();
+      const source = this._monitorCtx.createMediaStreamSource(
+        new MediaStream([track.mediaStreamTrack])
+      );
+      this._analyser = this._monitorCtx.createAnalyser();
+      this._analyser.fftSize = 2048;
+      source.connect(this._analyser);
+      this._startMonitoring();
+    } catch (e) {
+      log(`Audio monitor setup error: ${e.message}`, 'warn');
+    }
+  }
+
+  _startMonitoring() {
+    const buf = new Float32Array(this._analyser.fftSize);
+    const tick = () => {
+      this._analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+
+      const pct = Math.min(100, Math.max(0, (db + 60) * 2));
+      $('vuAgent').style.width = pct + '%';
+      $('vuAgent').style.background = pct > 10 ? 'var(--green)' : 'var(--dim)';
+      $('vuAgentDb').textContent = db > -80 ? `${db.toFixed(0)}dB` : '—';
+
+      if (rms > 0.01 && !this.realAudioDetected) {
+        this.realAudioDetected = true;
+        this.firstAudioTime = performance.now();
+        log(`REAL AUDIO detected! RMS=${rms.toFixed(4)} (${db.toFixed(1)}dB)`, 'ok');
+      }
+      if (rms > this.peakRms) this.peakRms = rms;
+
+      this._rafId = requestAnimationFrame(tick);
+    };
+    this._rafId = requestAnimationFrame(tick);
+  }
+
+  stop() {
+    if (this._rafId) cancelAnimationFrame(this._rafId);
+    if (this._monitorCtx) try { this._monitorCtx.close(); } catch {}
+  }
+}
+
+async function runSingleTest(testDef) {
+  const { id, wav, wavs, timeout } = testDef;
+  setBadge(id, 'running');
+  log(`\n━━━ TEST: ${testDef.name} ━━━`, 'info');
+
+  let room = null;
+  const monitor = new AgentAudioMonitor();
+  const t0 = performance.now();
+
+  try {
+    const { token, room: roomName } = await fetchToken();
+    log(`Token OK, room=${roomName}`);
+    setDiag('diagRoom', roomName);
+
+    room = new Room();
+
+    room.on(RoomEvent.ConnectionStateChanged, (state) => {
+      log(`Connection: ${state}`, state === ConnectionState.Connected ? 'ok' : 'warn');
+      setDiag('iceState', state);
+    });
+
+    room.on(RoomEvent.ParticipantConnected, (p) => {
+      log(`Participant joined: ${p.identity}`, 'ok');
+      setDiag('diagParts', `${room.remoteParticipants.size + 1}`);
+    });
+
+    room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+      if (track.kind === Track.Kind.Audio) {
+        monitor.onTrackSubscribed(track, participant);
+      }
+    });
+
+    room.on(RoomEvent.DataReceived, (payload) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload));
+        if (msg.type === 'transcript') {
+          log(`[${msg.role}] ${msg.text}`, msg.role === 'assistant' ? 'ok' : 'info');
+        } else if (msg.type === 'state') {
+          log(`Agent state: ${msg.state}`, 'info');
+        }
+      } catch {}
+    });
+
+    await room.connect('ws://211.93.21.133:18124', token);
+    log('Connected to LiveKit room', 'ok');
+
+    await sleep(1000);
+    const ice = await getIceInfo(room);
+    if (ice) {
+      const lt = ice.local?.candidateType || '?', rt = ice.remote?.candidateType || '?', pr = ice.local?.protocol || '?';
+      setDiag('iceType', `${lt}/${rt} (${pr})`);
+      setDiag('iceLocal', `${ice.local?.address||'?'}:${ice.local?.port||'?'} [${lt}]`);
+      setDiag('iceRemote', `${ice.remote?.address||'?'}:${ice.remote?.port||'?'} [${rt}]`);
+      log(`ICE: local=${lt} remote=${rt} proto=${pr}`, lt === 'relay' ? 'warn' : 'info');
+    }
+
+    if (id === 'silence_test') {
+      const agentReady = await waitForAgent(room);
+      if (!agentReady) {
+        log('FAIL: Agent never joined for silence test', 'err');
+        results[id] = 'fail'; setBadge(id, 'fail'); return results[id];
+      }
+      await sleep(1000);
+      log(`Silence test: waiting ${timeout/1000}s, no audio published...`);
+      await sleep(timeout);
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      if (!monitor.realAudioDetected) {
+        log(`PASS: No false trigger in ${elapsed}s`, 'ok');
+        results[id] = 'pass'; setBadge(id, 'pass', `${elapsed}s`);
+      } else {
+        log(`FAIL: Agent spoke on silence!`, 'err');
+        results[id] = 'fail'; setBadge(id, 'fail');
+      }
+
+    } else if (id === 'multi_turn') {
+      const agentReady = await waitForAgent(room);
+      if (!agentReady) {
+        log('FAIL: Agent never joined', 'err');
+        results[id] = 'fail'; setBadge(id, 'fail'); return results[id];
+      }
+      await sleep(2000);
+
+      let turnsPassed = 0;
+      for (let i = 0; i < wavs.length; i++) {
+        monitor.realAudioDetected = false;
+        monitor.firstAudioTime = null;
+        log(`\nTurn ${i+1}/${wavs.length}: ${wavs[i]}...`);
+        const wavData = await loadWav(wavs[i]);
+        const pub = await publishWavToRoom(room, wavData);
+        const turnStart = performance.now();
+
+        let gotReply = false;
+        for (let w = 0; w < 60; w++) {
+          await sleep(500);
+          if (monitor.realAudioDetected) { gotReply = true; break; }
+          if (w % 10 === 9) {
+            log(`  turn ${i+1} waiting... (${((performance.now()-turnStart)/1000).toFixed(0)}s, trackSub=${monitor.trackSubscribed}, peakRMS=${monitor.peakRms.toFixed(4)})`, 'warn');
+          }
+        }
+
+        const turnMs = ((performance.now() - turnStart) / 1000).toFixed(1);
+        if (gotReply) {
+          const lat = ((monitor.firstAudioTime - turnStart) / 1000).toFixed(1);
+          log(`Turn ${i+1} PASS (${turnMs}s, latency=${lat}s)`, 'ok');
+          turnsPassed++;
+          await sleep(5000);
+        } else {
+          log(`Turn ${i+1} FAIL: no real audio within 30s`, 'err');
+        }
+        await unpublishTrack(room, pub.pub, pub.audioCtx, pub.mediaTrack);
+        await sleep(2000);
+      }
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      if (turnsPassed === wavs.length) {
+        results[id] = 'pass'; setBadge(id, 'pass', `${elapsed}s`);
+        log(`PASS: All ${wavs.length} turns got real audio`, 'ok');
+      } else {
+        results[id] = 'fail'; setBadge(id, 'fail', `${turnsPassed}/${wavs.length}`);
+        log(`FAIL: ${turnsPassed}/${wavs.length} turns replied`, 'err');
+      }
+
+    } else {
+      const agentReady = await waitForAgent(room);
+      if (!agentReady) {
+        log('FAIL: Agent never joined within timeout', 'err');
+        results[id] = 'fail'; setBadge(id, 'fail'); return results[id];
+      }
+      await sleep(2000);
+      log('Agent is ready, publishing test audio now...', 'info');
+
+      const wavData = await loadWav(wav);
+      const pub = await publishWavToRoom(room, wavData);
+      const sendTime = performance.now();
+
+      log(`Waiting for agent real audio (max ${timeout/1000}s)...`);
+      let gotReply = false;
+      for (let w = 0; w < timeout / 500; w++) {
+        await sleep(500);
+        if (monitor.realAudioDetected) { gotReply = true; break; }
+        if (w % 10 === 9) {
+          log(`  still waiting... (${((performance.now()-sendTime)/1000).toFixed(0)}s, trackSub=${monitor.trackSubscribed}, peakRMS=${monitor.peakRms.toFixed(4)})`, 'warn');
+        }
+      }
+
+      if (gotReply) {
+        const latency = ((monitor.firstAudioTime - sendTime) / 1000).toFixed(1);
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+        log(`PASS (total=${elapsed}s, audio latency=${latency}s, peakRMS=${monitor.peakRms.toFixed(3)})`, 'ok');
+        results[id] = 'pass'; setBadge(id, 'pass', `${latency}s`);
+        log('Playing agent response for 5s...', 'info');
+        await sleep(5000);
+      } else {
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+        log(`FAIL: No real audio within ${timeout/1000}s (trackSub=${monitor.trackSubscribed}, peakRMS=${monitor.peakRms.toFixed(4)})`, 'err');
+        results[id] = 'fail'; setBadge(id, 'fail', `${elapsed}s`);
+      }
+
+      await unpublishTrack(room, pub.pub, pub.audioCtx, pub.mediaTrack);
+    }
+  } catch (e) {
+    log(`ERROR: ${e.message}\n${e.stack || ''}`, 'err');
+    results[id] = 'fail'; setBadge(id, 'fail');
+  } finally {
+    monitor.stop();
+    if (room) {
+      try { await room.disconnect(); } catch {}
+      log('Disconnected from room');
+    }
+  }
+  return results[id];
+}
+
+async function runAll() {
+  $('btnRunAll').disabled = true;
+  TESTS.forEach(t => { $(`btn-${t.id}`).disabled = true; });
+  log('═══════════════════════════════════════════════', 'info');
+  log('  Starting Full Test Suite', 'info');
+  log('═══════════════════════════════════════════════', 'info');
+
+  let passed = 0, failed = 0;
+  for (const t of TESTS) {
+    const r = await runSingleTest(t);
+    if (r === 'pass') passed++; else failed++;
+    await sleep(3000);
+  }
+
+  const sum = $('summary');
+  sum.style.display = 'block';
+  sum.style.border = `1px solid ${failed ? 'var(--red)' : 'var(--green)'}`;
+  sum.innerHTML = failed === 0
+    ? `<span style="color:var(--green);font-weight:700">ALL ${passed} TESTS PASSED</span>`
+    : `<span style="color:var(--red);font-weight:700">${failed} FAILED</span> / <span style="color:var(--green)">${passed} passed</span> of ${passed+failed}`;
+
+  $('btnRunAll').disabled = false;
+  TESTS.forEach(t => { $(`btn-${t.id}`).disabled = false; });
+}
+
+window._runSingle = async (id) => {
+  const t = TESTS.find(x => x.id === id);
+  if (!t) return;
+  $(`btn-${t.id}`).disabled = true;
+  await runSingleTest(t);
+  $(`btn-${t.id}`).disabled = false;
+};
+window.runAll = runAll;
+</script>
+</body>
+</html>

@@ -5,8 +5,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from livekit.api import AccessToken, VideoGrants
 
-API_KEY = os.environ.get("LIVEKIT_API_KEY", "devkey")
-API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")
+API_KEY = os.environ.get("LIVEKIT_API_KEY", "hzai_key")
+API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "hzai_secret_long_enough_for_production_use_2026")
 ROOM = sys.argv[1] if len(sys.argv) > 1 else "voxlabs-room"
 IDENTITY = sys.argv[2] if len(sys.argv) > 2 else "user"
 

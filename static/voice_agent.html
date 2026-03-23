@@ -241,7 +241,7 @@ function connectWS() {
         playableTurn = msg.turn;
         break;
       case 'barge_in':
-        addMsg('system', '⚡ Interrupted');
+        addMsg('system', '💬 barge-in');
         stopPlayback();
         playableTurn = 0;
         break;
@@ -270,7 +270,7 @@ class JitterBufferPlayer extends AudioWorkletProcessor {
     this.cur = null;
     this.pos = 0;
     this.state = 'idle';
-    this.targetSamples = Math.floor(44100 * 0.15);
+    this.targetSamples = Math.floor(44100 * 0.3);
     this.draining = false;
     this.port.onmessage = (e) => {
       if (e.data === 'flush') {

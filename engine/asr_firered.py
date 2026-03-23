@@ -26,6 +26,11 @@ class FireRedASR:
         if engine_dir not in sys.path:
             sys.path.insert(0, engine_dir)
 
+        import torch
+        if "cuda" in self._device:
+            gpu_idx = int(self._device.split(":")[-1]) if ":" in self._device else 0
+            torch.cuda.set_device(gpu_idx)
+
         from fireredasr2.asr import FireRedAsr2, FireRedAsr2Config
         use_gpu = "cuda" in self._device
         config = FireRedAsr2Config(use_gpu=use_gpu, use_half=self._use_half)

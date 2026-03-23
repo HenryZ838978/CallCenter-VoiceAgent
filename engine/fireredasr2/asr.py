@@ -79,13 +79,14 @@ class FireRedAsr2:
         self.tokenizer = tokenizer
         self.elm = elm
         self.config = config
+        self._gpu_device = torch.cuda.current_device() if self.config.use_gpu else None
         logger.info(self.config)
         if self.config.use_gpu:
             if self.config.use_half:
                 self.model.half()
-            self.model.cuda()
+            self.model.cuda(self._gpu_device)
             if self.elm:
-                self.elm.cuda()
+                self.elm.cuda(self._gpu_device)
         else:
             self.model.cpu()
 
@@ -102,7 +103,7 @@ class FireRedAsr2:
             return [{"uttid": uttid, "text":""} for uttid in batch_uttid_origin]
         total_dur = sum(durs)
         if self.config.use_gpu:
-            feats, lengths = feats.cuda(), lengths.cuda()
+            feats, lengths = feats.cuda(self._gpu_device), lengths.cuda(self._gpu_device)
             if self.config.use_half:
                 feats = feats.half()
 

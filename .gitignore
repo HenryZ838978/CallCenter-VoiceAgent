@@ -12,3 +12,9 @@ gh
 livekit-server
 livekit.yaml
 engine/fireredasr2/__pycache__/
+test_audio/
+static/livekit/test_audio/
+test_pipeline_local.py
+/tmp/
+*.log
+nohup.out

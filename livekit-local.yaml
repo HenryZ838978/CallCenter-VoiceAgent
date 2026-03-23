@@ -1,0 +1,10 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 7882
+  port_range_end: 7882
+  use_external_ip: false
+keys:
+  hzai_key: hzai_secret_long_enough_for_production_use_2026
+logging:
+  level: info

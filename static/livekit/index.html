@@ -22,6 +22,7 @@ h1 { font-size:24px; background:linear-gradient(135deg,#6c8cff,#22d3ee); -webkit
 .btn-connect:hover { opacity:.9; }
 .btn-disconnect { background:var(--red); color:#fff; }
 .btn-disconnect:hover { opacity:.9; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
 .chat { max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
 .msg { padding:8px 12px; border-radius:10px; font-size:14px; max-width:85%; animation:fadeIn .2s; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } }
@@ -54,8 +55,8 @@ h1 { font-size:24px; background:linear-gradient(135deg,#6c8cff,#22d3ee); -webkit
       <span class="state-badge state-idle" id="agentState">IDLE</span>
     </div>
     <div class="config">
-      <div><label>LiveKit URL</label><input id="lkUrl" value="wss://hzai.online:7443"></div>
-      <div><label>Token</label><input id="lkToken" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InZveGxhYnMtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ1c2VyIiwiaXNzIjoiaHphaV9rZXkiLCJuYmYiOjE3NzMyODkyNzYsImV4cCI6MTc3MzMxMDg3Nn0.CW-sOdrMlvSknCD25usWnIUtvJuLiYugsajK7QxIn-s"></div>
+      <div><label>LiveKit URL</label><input id="lkUrl" value="ws://211.93.21.133:18124"></div>
+      <div><label>Token</label><input id="lkToken" value="" placeholder="Auto-fetching..."></div>
     </div>
     <button class="btn btn-connect" id="btnConnect" onclick="toggleConnection()">Connect</button>
   </div>
@@ -66,17 +67,31 @@ h1 { font-size:24px; background:linear-gradient(135deg,#6c8cff,#22d3ee); -webkit
   </div>
 
   <div class="info">
-    WebRTC: UDP/DTLS — no TCP in-flight frames — native barge-in<br>
-    Generate token: <code>python livekit_agent/token_gen.py</code>
+    WebRTC: UDP/DTLS — no TCP in-flight frames — native barge-in
   </div>
 </div>
 
 <script type="module">
-import { Room, RoomEvent, Track, RemoteTrack, DisconnectReason } from 'https://esm.sh/livekit-client@2.11.3';
+import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.11.3';
 
 const $ = id => document.getElementById(id);
 let room = null;
 let connected = false;
+
+async function fetchToken() {
+  try {
+    const resp = await fetch('/livekit/token');
+    const data = await resp.json();
+    $('lkToken').value = data.token;
+    $('lkToken').placeholder = '';
+    return data.token;
+  } catch(e) {
+    $('lkToken').placeholder = 'Failed to fetch token';
+    return null;
+  }
+}
+
+fetchToken();
 
 function addMsg(role, text) {
   const chat = $('chat');
@@ -105,7 +120,12 @@ window.toggleConnection = async function() {
   }
 
   const url = $('lkUrl').value.trim();
-  const token = $('lkToken').value.trim();
+  let token = $('lkToken').value.trim();
+
+  if (!token) {
+    addMsg('system', 'Fetching token...');
+    token = await fetchToken();
+  }
   if (!url || !token) { addMsg('system', 'Enter LiveKit URL and token'); return; }
 
   room = new Room();
@@ -155,10 +175,12 @@ window.toggleConnection = async function() {
   });
 
   try {
+    setStatus(false, 'Connecting...');
     await room.connect(url, token);
     await room.localParticipant.setMicrophoneEnabled(true);
     addMsg('system', 'Microphone enabled');
   } catch(e) {
+    setStatus(false, 'Disconnected');
     addMsg('system', 'Connection failed: ' + e.message);
   }
 };

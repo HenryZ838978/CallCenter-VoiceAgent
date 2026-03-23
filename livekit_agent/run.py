@@ -1,21 +1,22 @@
-"""LiveKit Voice Agent — WebRTC transport for VoxLabs pipeline.
+"""LiveKit Voice Agent — WebRTC transport with official Silero VAD.
+
+Architecture:
+  VPS (82.156.207.59): LiveKit Server (:7880) + Nginx SSL (:7443)
+  4090 Server: Agent Worker (ASR GPU3 + TTS GPU2 + vLLM GPU1)
+  No SSH tunnel needed — Agent Worker connects outbound to VPS.
 
 Usage:
-    # 1. Start LiveKit Server:  ./livekit-server --config /tmp/livekit.yaml --dev
-    # 2. Start vLLM:            CUDA_VISIBLE_DEVICES=1 python -m vllm.entrypoints.openai.api_server ...
-    # 3. Start Agent Worker:    python livekit_agent/run.py dev
-
-SSH tunnel from Mac:
-    ssh -L 7880:localhost:7880 -L 7881:localhost:7881 user@10.158.0.7
-    Then open playground.html, connect to ws://localhost:7880
+    CUDA_VISIBLE_DEVICES=2,3 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
+      LIVEKIT_URL=ws://82.156.207.59:7880 \
+      python livekit_agent/run.py dev
 """
 import os
 import sys
 import asyncio
 import logging
-import threading
 import numpy as np
 import re
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -31,6 +32,7 @@ from livekit.agents import (
     cli,
 )
 from livekit.agents.types import NOT_GIVEN, APIConnectOptions
+from livekit.plugins.silero import VAD as SileroVAD
 
 from config import (
     ASR_MODEL_DIR, TTS_MODEL_DIR, VAD_MODEL_DIR,
@@ -49,31 +51,6 @@ _TAG_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 _XML_RE = re.compile(r"<\|?[a-zA-Z_/][^>]*\|?>")
 _ASR_TAG_RE = re.compile(r"<\|[^>]*\|>")
 
-_tts_lock = threading.Lock()
-_tts_engine = None
-
-
-def _get_tts():
-    """Lazy-load TTS on first use. nanovllm spawns its own subprocess, so we
-    defer loading until we're inside the worker process (after fork)."""
-    global _tts_engine
-    if _tts_engine is not None:
-        return _tts_engine
-    with _tts_lock:
-        if _tts_engine is not None:
-            return _tts_engine
-        from engine.tts import VoxCPMTTS
-        log.info("Lazy-loading TTS (VoxCPM nanovllm)...")
-        tts_util = float(os.environ.get("TTS_GPU_UTIL", "0.55"))
-        engine = VoxCPMTTS(TTS_MODEL_DIR, device=TTS_DEVICE, gpu_memory_utilization=tts_util)
-        engine.load()
-        if os.path.exists(VOICE_PROMPT_WAV):
-            pid = engine.register_voice(VOICE_PROMPT_WAV, VOICE_PROMPT_TEXT)
-            engine.set_default_voice(pid)
-        engine.warmup()
-        _tts_engine = engine
-        log.info("TTS ready")
-        return _tts_engine
 
 
 class VoxLabsSTT(stt.STT):
@@ -89,8 +66,14 @@ class VoxLabsSTT(stt.STT):
                 type=stt.SpeechEventType.FINAL_TRANSCRIPT,
                 alternatives=[stt.SpeechData(text="", language="zh")],
             )
+        src_sr = getattr(buffer, 'sample_rate', 16000)
+        if src_sr != 16000 and src_sr > 0:
+            from scipy.signal import resample
+            target_len = int(len(audio_data) * 16000 / src_sr)
+            audio_data = resample(audio_data, target_len).astype(np.float32)
         result = await loop.run_in_executor(None, self._asr.transcribe, audio_data)
         text = _ASR_TAG_RE.sub("", result["text"]).strip()
+        log.info("STT: '%s' (%.0fms)", text, result["latency_ms"])
         return stt.SpeechEvent(
             type=stt.SpeechEventType.FINAL_TRANSCRIPT,
             alternatives=[stt.SpeechData(text=text, language="zh")],
@@ -115,26 +98,31 @@ class VoxLabsChunkedStream(tts.ChunkedStream):
                          conn_options=conn_options or APIConnectOptions())
         self._text = text
 
-    async def _run(self):
-        loop = asyncio.get_event_loop()
-        engine = _get_tts()
-        result = await loop.run_in_executor(None, engine.synthesize, self._text)
-        audio = result["audio"]
-        if audio.dtype != np.int16:
-            audio = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
+    async def _run(self, output_emitter):
+        """Call TTS HTTP server, push PCM audio via output_emitter."""
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{TTS_SERVER_URL}/synthesize",
+                json={"text": self._text},
+            )
+            resp.raise_for_status()
+            audio_bytes = resp.content
+            latency = resp.headers.get("X-TTS-Latency-Ms", "?")
 
-        chunk_samples = 44100 // 5
-        for i in range(0, len(audio), chunk_samples):
-            chunk = audio[i:i + chunk_samples]
-            frame = rtc.AudioFrame(
-                data=chunk.tobytes(),
-                sample_rate=44100,
-                num_channels=1,
-                samples_per_channel=len(chunk),
-            )
-            self._event_ch.send_nowait(
-                tts.SynthesizedAudio(request_id=self._request_id, frame=frame)
-            )
+        req_id = str(uuid.uuid4())
+        output_emitter.initialize(
+            request_id=req_id,
+            sample_rate=44100,
+            num_channels=1,
+            mime_type="audio/pcm",
+        )
+
+        chunk_size = 44100 // 5 * 2
+        for i in range(0, len(audio_bytes), chunk_size):
+            output_emitter.push(audio_bytes[i:i + chunk_size])
+
+        log.info("TTS: '%s' (%sms via HTTP, %d bytes)", self._text[:30], latency, len(audio_bytes))
 
 
 class VoxLabsLLM(llm.LLM):
@@ -186,10 +174,11 @@ class VoxLabsLLMStream(llm.LLMStream):
                 if text_parts:
                     messages.append({"role": msg.role, "content": " ".join(text_parts)})
 
-        extra = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.2}
+        extra = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.15}
         stream = await client.chat.completions.create(
             model=self._model, messages=messages,
-            max_tokens=150, temperature=0.7, stream=True, extra_body=extra,
+            max_tokens=120, temperature=0.85, top_p=0.9,
+            stream=True, extra_body=extra,
         )
 
         async for chunk in stream:
@@ -200,27 +189,33 @@ class VoxLabsLLMStream(llm.LLMStream):
                 if token:
                     self._event_ch.send_nowait(
                         llm.ChatChunk(
-                            request_id=self._request_id,
-                            choices=[llm.Choice(
-                                delta=llm.ChoiceDelta(role="assistant", content=token),
-                                index=0,
-                            )],
+                            id=chunk.id or str(uuid.uuid4()),
+                            delta=llm.ChoiceDelta(role="assistant", content=token),
                         )
                     )
 
 
+TTS_SERVER_URL = os.environ.get("TTS_SERVER_URL", "http://localhost:8200")
+
+
 def prewarm(proc: JobProcess):
-    """Load ASR and RAG in worker subprocess. TTS is lazy-loaded on first request
-    to avoid nanovllm fork-in-fork CUDA issues."""
-    from engine.asr import SenseVoiceASR
+    """Load ASR + RAG + VAD. TTS loaded on first session (nanovllm fork-in-fork issue)."""
+    import torch
+
+    from engine.asr_firered import FireRedASR
     from engine.rag import RAGEngine
     import json
 
-    log.info("=== Prewarming VoxLabs engines (ASR + RAG) ===")
+    log.info("=== Prewarming (ASR %s, VAD Silero, TTS deferred) ===", ASR_DEVICE)
 
-    asr = SenseVoiceASR(ASR_MODEL_DIR, device=ASR_DEVICE)
+    gpu_idx = int(ASR_DEVICE.split(":")[-1]) if ":" in ASR_DEVICE else 0
+    torch.cuda.set_device(gpu_idx)
+    asr = FireRedASR(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "FireRedASR2-AED"),
+        device=ASR_DEVICE
+    )
     asr.load()
-    log.info("ASR loaded")
+    log.info("ASR loaded (FireRedASR2-AED on %s)", ASR_DEVICE)
 
     rag = RAGEngine(EMBED_MODEL_DIR, device="cpu", top_k=RAG_TOP_K)
     rag.load()
@@ -230,17 +225,25 @@ def prewarm(proc: JobProcess):
         rag.build_index(docs)
     log.info("RAG loaded (%d docs)", len(rag._documents))
 
+    silero_vad = SileroVAD.load(
+        activation_threshold=0.35,
+        min_speech_duration=0.05,
+        min_silence_duration=0.4,
+    )
+    log.info("Silero VAD loaded (threshold=0.35, silence=0.4s)")
+
     proc.userdata["asr"] = asr
     proc.userdata["rag"] = rag
-    log.info("=== Prewarm done (TTS will lazy-load on first request) ===")
+    proc.userdata["vad"] = silero_vad
+    log.info("=== Prewarm done (TTS via HTTP %s) ===", TTS_SERVER_URL)
 
 
 server = AgentServer(
     setup_fnc=prewarm,
-    ws_url=os.environ.get("LIVEKIT_URL", "ws://localhost:7880"),
-    api_key=os.environ.get("LIVEKIT_API_KEY", "devkey"),
-    api_secret=os.environ.get("LIVEKIT_API_SECRET", "secret"),
-    initialize_process_timeout=120.0,
+    ws_url=os.environ.get("LIVEKIT_URL", "ws://82.156.207.59:7880"),
+    api_key=os.environ.get("LIVEKIT_API_KEY", "hzai_key"),
+    api_secret=os.environ.get("LIVEKIT_API_SECRET", "hzai_secret_long_enough_for_production_use_2026"),
+    initialize_process_timeout=300.0,
     num_idle_processes=1,
 )
 
@@ -249,15 +252,13 @@ server = AgentServer(
 async def entrypoint(ctx):
     asr = ctx.proc.userdata["asr"]
     rag = ctx.proc.userdata["rag"]
-
-    from livekit_agent.silero_vad_lk import SileroVADPlugin
-    silero_vad = SileroVADPlugin(VAD_MODEL_DIR, threshold=0.5)
+    vad = ctx.proc.userdata["vad"]
 
     session = AgentSession(
         stt=VoxLabsSTT(asr),
         tts=VoxLabsTTS(),
         llm=VoxLabsLLM(VLLM_BASE_URL, VLLM_MODEL_NAME, SYSTEM_PROMPT_RAG, rag),
-        vad=silero_vad,
+        vad=vad,
         turn_detection="vad",
         allow_interruptions=True,
         min_endpointing_delay=0.3,

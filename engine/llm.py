@@ -38,11 +38,11 @@ class VLLMChat:
         """Non-streaming chat. Returns full response."""
         messages = self._build_messages(user_text, rag_context)
         t0 = time.perf_counter()
-        extra_body = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.2}
+        extra_body = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.15}
 
         resp = self._client.chat.completions.create(
             model=self._model, messages=messages,
-            max_tokens=150, temperature=0.7, extra_body=extra_body,
+            max_tokens=120, temperature=0.85, top_p=0.9, extra_body=extra_body,
         )
         latency = (time.perf_counter() - t0) * 1000
         text = self._clean(resp.choices[0].message.content or "")
@@ -61,11 +61,11 @@ class VLLMChat:
         """
         messages = self._build_messages(user_text, rag_context)
         t0 = time.perf_counter()
-        extra_body = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.2}
+        extra_body = {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.15}
 
         stream = self._client.chat.completions.create(
             model=self._model, messages=messages,
-            max_tokens=150, temperature=0.7,
+            max_tokens=120, temperature=0.85, top_p=0.9,
             stream=True, extra_body=extra_body,
         )
 

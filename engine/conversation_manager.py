@@ -459,7 +459,7 @@ class ConversationManager:
                     if audio.dtype != np.int16:
                         audio = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
                     await self._send({"_audio": audio.tobytes()})
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.01)
 
             await self._send({
                 "type": "llm", "text": full_response,
