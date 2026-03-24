@@ -1993,4 +1993,158 @@ v2.7 — 体验层 D1-D4 + 音色更换 + 代码清理 + 自测 13/13 PASS
 
 ---
 
-*最后更新: 2026-03-24 | Pipeline v2.7 体验层 D1-D4 + 音色更换 + 代码清理 + 自测 13/13 PASS*
+### 2026-03-24 — Pipeline v2.8: 稳定性加固 (P0/P1)
+
+#### 1. 改动
+
+| ID | 严重性 | 问题 | 修复 |
+|---|---|---|---|
+| P0 | Critical | 无异常兜底 — pipeline 崩溃时状态机卡死 | `_run_pipeline` + `_stream_llm_tts` 全 try/except + 用户道歉 |
+| P0 | Critical | LLM 无 timeout — 队列 `get()` 可能永久挂起 | `asyncio.wait_for(timeout=35)` |
+| P0 | High | 断连清理 — 资源泄漏 | Task registry + `shutdown()` cancel all |
+| P0 | High | 前端 session_end — 不处理 | 前端 `case 'session_end'` 挂断 |
+| P1 | Medium | Filler 语气词 — 代码在但未激活 | THINKING 入口调用 `_send_filler()` |
+| P1 | Medium | 打断一致性 — client/server 分裂 | 移除客户端 RMS 打断，仅服务端权威 |
+| P1 | Low | 监控指标 — 空壳 | `_SessionMetrics` + `/api/metrics` |
+
+#### 2. 自测 17/17 PASS
+
+Mock 13 (D1-D4 + P0 + P1) + GPU 推理 4 (TTS + LLM + STT + 全链路)
+
+---
+
+### 2026-03-24 — Pipeline v2.9: 状态竞争修复 + 全面加固 (G1-G13)
+
+#### 1. 审计与发现
+
+对 v2.8 做全面代码审计，发现 1 个 Critical bug + 12 个 High/Medium gap。
+
+#### 2. 紧急修复 (G1-G7)
+
+| ID | 严重性 | 问题 | 修复 | 文件 |
+|---|---|---|---|---|
+| **G1** | **Critical** | `_run_pipeline` finally 在 `_stream_llm_tts` 仍在播放时把状态设为 IDLE — 每轮对话都触发 | `_run_pipeline_inner` 末尾 `await self._speaking_task`；finally 仅重置 THINKING | `conversation_manager.py` |
+| G2 | High | `handle_text_input` 的 RAG 调用无异常保护 — 崩溃直接断 WS | try/except 降级为空上下文 | `conversation_manager.py` |
+| G3 | High | FireRedASR 共享 `chunk.wav` — 多 session 覆盖 | 递增计数器命名 + 用完删除 + threading.Lock | `asr_firered.py` |
+| G5 | Medium | speculative ASR task 未进 `_tasks` registry | 改用 `_track_task()` | `conversation_manager.py` |
+| G6 | Low | `_total_errors` 声明但从未自增 | finally 中 `_total_errors += metrics.errors` | `ws_server.py` |
+| G7 | Medium | 句子队列无 maxsize — LLM 快 + TTS 慢时内存增长 | `Queue(maxsize=8)` + `fut.result(timeout=30)` 线程背压 | `conversation_manager.py` |
+
+#### 3. 高优增强 (G3-G4, G8)
+
+| ID | 问题 | 修复 |
+|---|---|---|
+| G4 | WS + 全部 HTTP API 无鉴权 | `VOICEAGENT_API_KEY` env → Bearer token / `?token=` |
+| G8 | Speaker-aware VAD 非默认 | `USE_SPEAKER_VAD=auto` — 模型目录存在则自动启用 |
+
+#### 4. 体验打磨 (G9-G13)
+
+| ID | 问题 | 修复 |
+|---|---|---|
+| G9 | LLM 上下文仅 5 轮 | `LLM_MAX_HISTORY=20` + 超出部分生成摘要注入 system prompt |
+| G10 | RAG 无检索置信度阈值 | `RAG_SCORE_THRESHOLD=0.35`，低于阈值的结果被过滤 |
+| G11 | 服务端降噪默认关 | `USE_DENOISE=auto` — 模型目录存在则自动启用 |
+| G12 | 结构化日志 | `LoggerAdapter(session=sid)` + format 增加 `%(name)s` |
+| G13 | 无 E2E WebSocket 测试 | `test_e2e_ws.py` — 6 项集成测试 (connect/silence/text/auth/info/metrics) |
+
+#### 5. 新增配置项
+
+```
+VOICEAGENT_API_KEY=""        # 空=不鉴权
+LLM_MAX_HISTORY=20           # 保留消息数 (10轮)
+RAG_SCORE_THRESHOLD=0.35     # 检索置信度下限
+USE_SPEAKER_VAD=auto         # auto/0/1
+USE_DENOISE=auto             # auto/0/1
+```
+
+#### 6. 自测 18/18 PASS
+
+| # | 测试 | 结果 |
+|---|---|---|
+| 1-9 | D1-D4 体验层 (greeting, idle, recovery, farewell) | 9/9 PASS |
+| 10-11 | P0 crash safety + shutdown | 2/2 PASS |
+| 12-13 | P1 filler + metrics | 2/2 PASS |
+| 14 | **G1 no premature IDLE** — 状态序列 `['speaking', 'idle']` | **PASS** |
+| 15 | **G2 text_input RAG crash** — 降级后正常出音 | **PASS** |
+| 16 | **G7 bounded queue** — 背压正常 | **PASS** |
+| 17 | **G9 history trim** — 摘要生成正确 | **PASS** |
+| 18 | **G10 RAG threshold** — 低分结果被过滤 | **PASS** |
+
+#### 7. 修改文件
+
+| 文件 | 改动 |
+|---|---|
+| `engine/conversation_manager.py` | G1 await + finally 修复, G2 RAG 保护, G5 spec ASR, G7 背压 |
+| `ws_server.py` | G4 鉴权, G6 错误计数, G8/G11 auto 检测, G12 结构化日志 |
+| `engine/llm.py` | G9 configurable history + `_trim_history()` 摘要 |
+| `engine/rag.py` | G10 `score_threshold` 过滤 |
+| `engine/asr_firered.py` | G3 线程安全 temp 文件 |
+| `config.py` | 新增 `API_KEY`, `LLM_MAX_HISTORY`, `RAG_SCORE_THRESHOLD` |
+| `static/voice_agent.html` | v2.9 版本号 + token 传递 |
+| `test_experience.py` | 新增 5 项测试 (G1/G2/G7/G9/G10) |
+| `test_e2e_ws.py` | **新增** — E2E WebSocket 集成测试 (6 项) |
+
+#### 8. 版本
+
+```
+v2.8 — 稳定性加固 (crash-safe + filler + metrics)
+v2.9 — 状态竞争修复 + 鉴权 + RAG 置信度 + 上下文摘要 + 自测 18/18 PASS
+```
+
+---
+
+## 项目结构 (v2.9 / 4090)
+
+```
+/cache/zhangjing/voiceagent/
+├── engine/
+│   ├── asr.py                    # SenseVoice (FunASR)
+│   ├── asr_firered.py            # FireRedASR2-AED 1.15B (线程安全)
+│   ├── asr_moonshine.py          # Moonshine Tiny (speculative)
+│   ├── conversation_manager.py   # v2.9 状态机 + G1 await 修复
+│   ├── llm.py                    # vLLM (max_history=20 + 摘要)
+│   ├── tts.py                    # VoxCPM 1.5 (44.1kHz, voice clone)
+│   ├── vad.py                    # Silero VAD
+│   ├── firered_vad.py            # FireRedVAD (备选)
+│   ├── speaker_vad.py            # SpeakerAwareVAD (ECAPA-TDNN, auto)
+│   ├── turn_detector.py          # Pipecat Smart Turn v3
+│   ├── rag.py                    # bge-small + FAISS (score_threshold)
+│   ├── filler.py                 # 语气词引擎 (已激活)
+│   ├── denoiser.py               # DTLN 降噪 (auto)
+│   └── captioner.py              # 副语言情感 captioner
+│
+├── static/
+│   └── voice_agent.html          # v2.9 + token 传递
+│
+├── test_experience.py            # v2.9 自测 (18 项)
+├── test_pipeline_local.py        # GPU 推理自测 (4 项)
+├── test_e2e_ws.py                # E2E WebSocket 集成测试 (6 项)
+│
+├── ws_server.py                  # v2.9 + API key auth + auto detect
+├── config.py                     # + API_KEY, LLM_MAX_HISTORY, RAG_SCORE_THRESHOLD
+├── devlog.md                     # 开发日志
+├── dashboard.html                # 项目仪表板
+├── start_all.sh                  # 一键启动
+├── keep_alive.sh                 # 守护脚本
+└── .gitignore
+```
+
+---
+
+## 下一步 TODO
+
+### Pipeline Agent (v2.9 全面加固)
+
+- [x] **v2.7 体验层 D1-D4** + 音色更换 + 代码清理
+- [x] **v2.8 稳定性加固** — crash-safe + filler + metrics + 17/17 PASS
+- [x] **v2.9 状态竞争修复** — G1 await + G2-G13 全面加固 + 18/18 PASS
+- [ ] 浏览器 E2E 验证 (需服务运行 + `test_e2e_ws.py`)
+- [ ] SIP trunk 接入电话网络
+- [ ] 多并发: 支持多路同时通话
+- [ ] Filler: 录制真人语气词音频替换 TTS 生成版
+
+### Hybrid Agent (v3.1, 已稳定)
+
+- [ ] 持久化部署 — systemd + 固定域名
+
+*最后更新: 2026-03-24 | Pipeline v2.9 状态竞争修复 + 全面加固 + 自测 18/18 PASS*

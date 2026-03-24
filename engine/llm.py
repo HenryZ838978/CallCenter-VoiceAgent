@@ -13,7 +13,7 @@ _SENTENCE_END_RE = re.compile(r"[。！？!?；;，,\n]")
 class VLLMChat:
     def __init__(self, base_url: str = "http://localhost:8000/v1",
                  model: str = "MiniCPM4.1-8B-GPTQ",
-                 system_prompt: str = ""):
+                 system_prompt: str = "", max_history: int = 20):
         self._client = OpenAI(
             base_url=base_url, api_key="dummy",
             timeout=httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=10.0),
@@ -21,9 +21,26 @@ class VLLMChat:
         self._model = model
         self._system_prompt = system_prompt
         self._history = []
+        self._max_history = max_history
+        self._summary = ""
 
     def reset(self):
         self._history = []
+        self._summary = ""
+
+    def _trim_history(self):
+        """Keep last max_history messages; summarize evicted turns into _summary."""
+        if len(self._history) <= self._max_history:
+            return
+        evicted = self._history[:len(self._history) - self._max_history]
+        self._history = self._history[-self._max_history:]
+        turns = []
+        for i in range(0, len(evicted) - 1, 2):
+            u = evicted[i].get("content", "")[:60]
+            a = evicted[i + 1].get("content", "")[:60] if i + 1 < len(evicted) else ""
+            turns.append(f"用户:{u} → AI:{a}")
+        if turns:
+            self._summary = "之前的对话摘要：" + "；".join(turns[-5:])
 
     def _build_messages(self, user_text: str, rag_context: str = None):
         messages = []
@@ -32,6 +49,8 @@ class VLLMChat:
             system = system.replace("{context}", rag_context) if "{context}" in system else (
                 system + f"\n\n知识库信息：\n{rag_context}"
             )
+        if self._summary:
+            system = system + f"\n\n{self._summary}"
         if system:
             messages.append({"role": "system", "content": system})
         messages.extend(self._history)
@@ -54,8 +73,7 @@ class VLLMChat:
 
         self._history.append({"role": "user", "content": user_text})
         self._history.append({"role": "assistant", "content": text})
-        if len(self._history) > 10:
-            self._history = self._history[-10:]
+        self._trim_history()
 
         return {"text": text, "latency_ms": latency, "tokens": tokens}
 
@@ -122,8 +140,7 @@ class VLLMChat:
         final_text = self._clean(full_text)
         self._history.append({"role": "user", "content": user_text})
         self._history.append({"role": "assistant", "content": final_text})
-        if len(self._history) > 10:
-            self._history = self._history[-10:]
+        self._trim_history()
 
     @staticmethod
     def _clean(text: str) -> str:

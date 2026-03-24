@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VoxLabs — Voice Agent v2.8</title>
+<title>VoxLabs — Voice Agent v2.9</title>
 <style>
 :root {
   --bg: #0a0e1a; --surface: #111827; --surface2: #1a2236;
@@ -72,7 +72,7 @@ body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif; backgr
 <body>
 <div class="app">
   <div class="header">
-    <h1>VoxLabs Voice Agent <span style="font-size:12px;color:var(--dim)">v2.8</span></h1>
+    <h1>VoxLabs Voice Agent <span style="font-size:12px;color:var(--dim)">v2.9</span></h1>
     <div class="right">
       <span class="state-badge state-idle" id="stateBadge">IDLE</span>
       <span><span class="status-dot" id="statusDot"></span> <span id="statusText">Disconnected</span></span>
@@ -128,7 +128,7 @@ body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif; backgr
     </div>
   </div>
 
-  <div class="footer">VoxLabs v2.8 — Crash-safe pipeline + Filler + Experience layer D1-D4</div>
+  <div class="footer">VoxLabs v2.9 — State-race fix + Auth + RAG confidence + Context summary</div>
 </div>
 
 <script>
@@ -186,7 +186,12 @@ function updateLatency(d) {
 function connectWS() {
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws/voice`);
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || '';
+  const wsUrl = token
+    ? `${proto}://${location.host}/ws/voice?token=${encodeURIComponent(token)}`
+    : `${proto}://${location.host}/ws/voice`;
+  ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => setStatus('connected', 'Connected');
   ws.onclose = () => { setStatus('', 'Disconnected'); ws = null; };

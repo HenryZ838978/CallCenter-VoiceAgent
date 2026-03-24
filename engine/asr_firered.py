@@ -7,6 +7,7 @@ import sys
 import time
 import tempfile
 import logging
+import threading
 import numpy as np
 import soundfile as sf
 
@@ -20,6 +21,8 @@ class FireRedASR:
         self._use_half = use_half
         self._model = None
         self._tmp_dir = tempfile.mkdtemp(prefix="firered_asr_")
+        self._call_counter = 0
+        self._counter_lock = threading.Lock()
 
     def load(self):
         engine_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,14 +47,27 @@ class FireRedASR:
         self.transcribe(dummy)
 
     def transcribe(self, audio: np.ndarray, sr: int = 16000) -> dict:
-        """Transcribe audio array. Returns {'text': str, 'latency_ms': float}."""
+        """Transcribe audio array. Returns {'text': str, 'latency_ms': float}.
+        Thread-safe: each call uses a unique temp file to avoid multi-session collisions.
+        """
         t0 = time.perf_counter()
 
-        tmp_path = os.path.join(self._tmp_dir, "chunk.wav")
+        with self._counter_lock:
+            self._call_counter += 1
+            call_id = self._call_counter
+
+        tmp_path = os.path.join(self._tmp_dir, f"chunk_{call_id}.wav")
         int16 = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
         sf.write(tmp_path, int16, sr)
 
-        results = self._model.transcribe(["utt"], [tmp_path])
+        try:
+            results = self._model.transcribe(["utt"], [tmp_path])
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
         latency = (time.perf_counter() - t0) * 1000
 
         text = ""

@@ -27,6 +27,21 @@ RAG_INDEX_PATH = os.path.join(BASE_DIR, "data", "rag_index")
 RAG_TOP_K = 3
 RAG_GPU = int(os.environ.get("RAG_GPU", "2"))
 
+# ---------------------------------------------------------------------------
+# LLM context
+# ---------------------------------------------------------------------------
+LLM_MAX_HISTORY = int(os.environ.get("LLM_MAX_HISTORY", "20"))
+
+# ---------------------------------------------------------------------------
+# API key (empty = auth disabled)
+# ---------------------------------------------------------------------------
+API_KEY = os.environ.get("VOICEAGENT_API_KEY", "")
+
+# ---------------------------------------------------------------------------
+# RAG confidence threshold (cosine similarity, 0-1)
+# ---------------------------------------------------------------------------
+RAG_SCORE_THRESHOLD = float(os.environ.get("RAG_SCORE_THRESHOLD", "0.35"))
+
 VOICE_PROMPT_WAV = os.environ.get(
     "VOICE_PROMPT_WAV",
     os.path.join(BASE_DIR, "data", "doubao_ref_7s.wav"),

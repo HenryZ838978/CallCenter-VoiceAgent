@@ -1,6 +1,8 @@
 """
-VoxLabs Voice Agent v2.8 — Production Full-Duplex WebSocket Server
+VoxLabs Voice Agent v2.9 — Production Full-Duplex WebSocket Server
 
+v2.9: state-race fix, API key auth, auto speaker-VAD/denoise,
+      structured logging, RAG confidence, LLM context expansion.
 v2.8: crash-safe pipeline, session metrics, dead-socket detection,
       task lifecycle management, filler activation, barge-in consistency.
 """
@@ -8,6 +10,7 @@ import os
 import sys
 import json
 import time
+import hmac
 import asyncio
 import logging
 import numpy as np
@@ -15,34 +18,55 @@ import uvicorn
 import nest_asyncio
 nest_asyncio.apply()
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.status import HTTP_403_FORBIDDEN
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import (
     ASR_MODEL_DIR, TTS_MODEL_DIR, VAD_MODEL_DIR,
     VLLM_BASE_URL, VLLM_MODEL_NAME,
-    EMBED_MODEL_DIR, KB_DATA_PATH, RAG_TOP_K,
+    EMBED_MODEL_DIR, KB_DATA_PATH, RAG_TOP_K, RAG_SCORE_THRESHOLD,
     SYSTEM_PROMPT_RAG, VOICE_PROMPT_WAV, VOICE_PROMPT_TEXT,
     GREETING_TEXT, IDLE_TIMEOUT_S, IDLE_GOODBYE_S,
     IDLE_PROMPT_TEXT, IDLE_GOODBYE_TEXT,
     ASR_EMPTY_RETRY_TEXT, ASR_NOISY_SUGGEST_TEXT, MAX_CONSECUTIVE_EMPTY_ASR,
     FAREWELL_KEYWORDS,
+    LLM_MAX_HISTORY, API_KEY,
 )
 CAPTIONER_URL = os.environ.get("CAPTIONER_URL", "")
 CAPTIONER_MODEL = os.environ.get("CAPTIONER_MODEL", "MiniCPM-o-4.5-awq")
-USE_SPEAKER_VAD = os.environ.get("USE_SPEAKER_VAD", "0") == "1"
 USE_FIRERED_VAD = os.environ.get("USE_FIRERED_VAD", "0") == "1"
 USE_MOONSHINE_ASR = os.environ.get("USE_MOONSHINE_ASR", "0") == "1"
 USE_FIRERED_ASR = os.environ.get("USE_FIRERED_ASR", "0") == "1"
 USE_SMART_TURN = os.environ.get("USE_SMART_TURN", "0") == "1"
-USE_DENOISE = os.environ.get("USE_DENOISE", "0") == "1"
+
+_speaker_vad_env = os.environ.get("USE_SPEAKER_VAD", "auto")
+_denoise_env = os.environ.get("USE_DENOISE", "auto")
 DTLN_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "dtln")
 SPEAKER_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "spkrec-ecapa-voxceleb")
 FIRERED_VAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedVAD-stream")
 FIRERED_ASR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "FireRedASR2-AED")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+def _model_dir_ready(d: str) -> bool:
+    if not os.path.isdir(d):
+        return False
+    entries = [e for e in os.listdir(d) if not e.startswith(".")]
+    return len(entries) >= 2
+
+USE_SPEAKER_VAD = (
+    _speaker_vad_env == "1" or
+    (_speaker_vad_env == "auto" and _model_dir_ready(SPEAKER_MODEL_DIR))
+)
+USE_DENOISE = (
+    _denoise_env == "1" or
+    (_denoise_env == "auto" and _model_dir_ready(DTLN_MODEL_DIR))
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s %(message)s",
+)
 log = logging.getLogger("voxlabs")
 
 ASR_DEVICE = os.environ.get("ASR_DEVICE", "cuda:0")
@@ -115,8 +139,9 @@ def load_engines():
         engine["asr"] = SenseVoiceASR(ASR_MODEL_DIR, device=ASR_DEVICE)
         engine["asr"].load()
 
-    log.info("Loading RAG (bge-small-zh-v1.5)...")
-    rag = RAGEngine(EMBED_MODEL_DIR, device=RAG_DEVICE, top_k=RAG_TOP_K)
+    log.info("Loading RAG (bge-small-zh-v1.5, threshold=%.2f)...", RAG_SCORE_THRESHOLD)
+    rag = RAGEngine(EMBED_MODEL_DIR, device=RAG_DEVICE, top_k=RAG_TOP_K,
+                    score_threshold=RAG_SCORE_THRESHOLD)
     rag.load()
     if os.path.exists(KB_DATA_PATH):
         with open(KB_DATA_PATH, "r", encoding="utf-8") as f:
@@ -125,10 +150,10 @@ def load_engines():
         log.info("RAG index: %d docs, dim=%d", info["num_docs"], info["dim"])
     engine["rag"] = rag
 
-    log.info("LLM client ready (vLLM @ %s)", VLLM_BASE_URL)
+    log.info("LLM client ready (vLLM @ %s, max_history=%d)", VLLM_BASE_URL, LLM_MAX_HISTORY)
     engine["llm_factory"] = lambda: VLLMChat(
         base_url=VLLM_BASE_URL, model=VLLM_MODEL_NAME,
-        system_prompt=SYSTEM_PROMPT_RAG,
+        system_prompt=SYSTEM_PROMPT_RAG, max_history=LLM_MAX_HISTORY,
     )
 
     log.info("Loading TTS (VoxCPM nanovllm)...")
@@ -162,10 +187,13 @@ def load_engines():
         log.info("Using HeuristicCaptioner (no CAPTIONER_URL set)")
         engine["captioner"] = HeuristicCaptioner()
 
-    log.info("=== All engines loaded (v2.2) ===")
+    log.info("=== All engines loaded (v2.9) ===")
+    log.info("  Speaker-aware VAD: %s (env=%s)", USE_SPEAKER_VAD, _speaker_vad_env)
+    log.info("  Denoise (DTLN): %s (env=%s)", USE_DENOISE, _denoise_env)
+    log.info("  API key auth: %s", "enabled" if API_KEY else "disabled")
 
 
-app = FastAPI(title="VoxLabs Voice Agent v2.8")
+app = FastAPI(title="VoxLabs Voice Agent v2.9")
 BASE_DIR = Path(__file__).parent
 
 _active_sessions: dict[str, dict] = {}
@@ -173,18 +201,38 @@ _total_sessions = 0
 _total_errors = 0
 
 
+def _check_api_key(token: str | None) -> bool:
+    if not API_KEY:
+        return True
+    if not token:
+        return False
+    return hmac.compare_digest(token, API_KEY)
+
+
+async def verify_api_key(request: Request):
+    """FastAPI dependency — checks Bearer token or ?token= query param."""
+    if not API_KEY:
+        return
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+    if not token:
+        token = request.query_params.get("token", "")
+    if not _check_api_key(token):
+        raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="Invalid API key")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse((BASE_DIR / "static" / "voice_agent.html").read_text(encoding="utf-8"))
 
 
-@app.get("/api/info")
+@app.get("/api/info", dependencies=[Depends(verify_api_key)])
 async def api_info():
     rag = engine.get("rag")
     asr_name = "FireRedASR2-AED" if USE_FIRERED_ASR else "SenseVoiceSmall"
     asr_fw = "FireRedASR" if USE_FIRERED_ASR else "FunASR"
     return {
-        "version": "2.8",
+        "version": "2.9",
         "models": {
             "asr": {"name": asr_name, "framework": asr_fw},
             "llm": {"name": VLLM_MODEL_NAME, "endpoint": VLLM_BASE_URL, "streaming": True},
@@ -194,12 +242,13 @@ async def api_info():
         "features": [
             "filler_words", "sentence_streaming", "barge_in",
             "utterance_aggregation", "experience_layer_d1_d4", "crash_safe",
+            "api_key_auth", "rag_confidence", "context_summary",
         ],
         "rag": {"num_docs": len(rag._documents) if rag else 0, "top_k": RAG_TOP_K},
     }
 
 
-@app.get("/api/metrics")
+@app.get("/api/metrics", dependencies=[Depends(verify_api_key)])
 async def api_metrics():
     sessions = []
     for sid, info in _active_sessions.items():
@@ -212,11 +261,12 @@ async def api_metrics():
     return {
         "total_sessions": _total_sessions,
         "active_sessions": len(_active_sessions),
+        "total_errors": _total_errors,
         "sessions": sessions,
     }
 
 
-@app.get("/api/rag/docs")
+@app.get("/api/rag/docs", dependencies=[Depends(verify_api_key)])
 async def rag_docs():
     rag = engine.get("rag")
     if not rag:
@@ -225,7 +275,7 @@ async def rag_docs():
                        "answer": d.get("answer", "")[:100]} for d in rag._documents]}
 
 
-@app.get("/api/rag/query")
+@app.get("/api/rag/query", dependencies=[Depends(verify_api_key)])
 async def rag_query(q: str):
     rag = engine.get("rag")
     if not rag:
@@ -233,7 +283,7 @@ async def rag_query(q: str):
     return rag.query(q)
 
 
-@app.post("/api/rag/reload")
+@app.post("/api/rag/reload", dependencies=[Depends(verify_api_key)])
 async def rag_reload():
     rag = engine.get("rag")
     if not rag or not os.path.exists(KB_DATA_PATH):
@@ -244,10 +294,14 @@ async def rag_reload():
 
 
 @app.websocket("/ws/voice")
-async def ws_voice(ws: WebSocket):
+async def ws_voice(ws: WebSocket, token: str = Query(default="")):
+    if not _check_api_key(token):
+        await ws.close(code=4003, reason="Invalid API key")
+        return
     await ws.accept()
     session_id = f"s-{int(time.time() * 1000)}"
-    log.info("[%s] Connected", session_id)
+    slog = logging.LoggerAdapter(log, {"session": session_id})
+    slog.info("Connected")
 
     from engine.conversation_manager import ConversationManager
 
@@ -281,7 +335,7 @@ async def ws_voice(ws: WebSocket):
         except Exception as e:
             if not _ws_dead:
                 _ws_dead = True
-                log.warning("[%s] WebSocket send failed (marking dead): %s", session_id, e)
+                slog.warning("WebSocket send failed (marking dead): %s", e)
 
     exp_cfg = {
         "greeting_text": GREETING_TEXT,
@@ -306,11 +360,11 @@ async def ws_voice(ws: WebSocket):
         experience_config=exp_cfg,
     )
 
-    global _total_sessions
+    global _total_sessions, _total_errors
     _total_sessions += 1
     _active_sessions[session_id] = {"started": time.time(), "cm": cm}
 
-    await send_fn({"type": "ready", "session_id": session_id, "version": "2.8"})
+    await send_fn({"type": "ready", "session_id": session_id, "version": "2.9"})
 
     if GREETING_TEXT:
         cm._track_task(cm.start_greeting(), name="greeting")
@@ -318,7 +372,7 @@ async def ws_voice(ws: WebSocket):
     try:
         while True:
             if _ws_dead:
-                log.info("[%s] send_fn dead, exiting loop", session_id)
+                slog.info("send_fn dead, exiting loop")
                 break
 
             data = await ws.receive()
@@ -337,12 +391,13 @@ async def ws_voice(ws: WebSocket):
                     await send_fn({"type": "reset_ack"})
 
     except WebSocketDisconnect:
-        log.info("[%s] Disconnected (turn %d)", session_id, cm._turn)
+        slog.info("Disconnected (turn %d)", cm._turn)
     except Exception as e:
-        log.error("[%s] Error: %s", session_id, e, exc_info=True)
+        slog.error("Error: %s", e, exc_info=True)
     finally:
         metrics = cm.metrics.summary()
-        log.info("[%s] Session metrics: %s", session_id, metrics)
+        _total_errors += metrics.get("errors", 0)
+        slog.info("Session metrics: %s", metrics)
         _active_sessions.pop(session_id, None)
         cm.shutdown()
 

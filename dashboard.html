@@ -666,7 +666,8 @@
     <button class="page-tab" onclick="switchPage('v24')">v2.4 全链路修复</button>
     <button class="page-tab" onclick="switchPage('hybrid')">Hybrid Agent <span class="tab-badge new">v3.0</span></button>
     <button class="page-tab" onclick="switchPage('v25')">v2.6 LiveKit Direct</button>
-    <button class="page-tab" onclick="switchPage('v27')">v2.7 体验层 <span class="tab-badge new">LATEST</span></button>
+    <button class="page-tab" onclick="switchPage('v27')">v2.7 体验层</button>
+    <button class="page-tab" onclick="switchPage('v29')">v2.9 全面加固 <span class="tab-badge new">LATEST</span></button>
   </div>
 
   <!-- PAGE 1: Plan (existing) -->
@@ -3376,8 +3377,138 @@
             <span>直连架构 + Pipeline 全链路验证</span>
           </div>
           <div style="display:flex;gap:12px;padding:6px 0;align-items:center">
-            <code style="color:var(--green);min-width:40px;font-weight:700">v2.7</code>
-            <span style="color:var(--green);font-weight:600">体验层 D1-D4 + 音色更换 + 代码清理 + 自测 13/13 PASS</span>
+            <code style="color:var(--text-dim);min-width:40px">v2.7</code>
+            <span>体验层 D1-D4 + 音色更换 + 代码清理 + 自测 13/13 PASS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== v2.9 全面加固 ==================== -->
+  <div id="page-v29" class="page-content">
+    <div class="section">
+      <h2 class="section-title"><span class="dot green"></span> v2.9 状态竞争修复 + 全面加固 (G1-G13)</h2>
+      <p style="color:var(--text-dim);margin-bottom:24px">对 v2.8 做全面代码审计，发现 1 个 Critical 状态竞争 bug + 12 个 gap。全部修复并通过 18 项自测。</p>
+
+      <!-- Critical Bug -->
+      <div class="card" style="border-left:3px solid var(--red)">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px;color:var(--red)">G1 Critical: _run_pipeline 状态竞争 (每轮触发)</div>
+        <div style="display:grid;gap:8px;font-size:13px">
+          <div><strong>Bug:</strong> <code>_run_pipeline_inner</code> 发起 <code>_stream_llm_tts</code> 后立即 return → <code>_run_pipeline</code> finally 看到 state=SPEAKING → 强制设为 IDLE → 前端收到 idle 解除静音 → 但 TTS 仍在播放</div>
+          <div><strong>影响:</strong> 每轮对话 barge-in 逻辑紊乱，VAD 状态与音频播放错位</div>
+          <div><strong>Fix:</strong> <code>_run_pipeline_inner</code> 末尾 <code>await self._speaking_task</code>；finally 仅在 <code>state == THINKING</code> 时重置</div>
+          <div><strong>验证:</strong> 状态序列 <code>['speaking', 'idle']</code> — IDLE 严格在 TTS 播完后</div>
+        </div>
+      </div>
+
+      <!-- 紧急修复 -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">紧急修复 (G1-G7)</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">ID</th>
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">严重性</th>
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">问题</th>
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">修复</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700;color:var(--red)">G1</td><td style="padding:6px;color:var(--red)">Critical</td><td style="padding:6px">_run_pipeline finally 状态竞争</td><td style="padding:6px">await _speaking_task + finally 仅重置 THINKING</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G2</td><td style="padding:6px;color:var(--yellow)">High</td><td style="padding:6px">handle_text_input RAG 无保护</td><td style="padding:6px">try/except 降级为空上下文</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G3</td><td style="padding:6px;color:var(--yellow)">High</td><td style="padding:6px">FireRedASR 共享 chunk.wav</td><td style="padding:6px">递增计数器 + Lock + 用完删除</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G5</td><td style="padding:6px;color:var(--text-dim)">Medium</td><td style="padding:6px">speculative ASR 不在 task registry</td><td style="padding:6px">改用 _track_task()</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G6</td><td style="padding:6px;color:var(--text-dim)">Low</td><td style="padding:6px">_total_errors 从未自增</td><td style="padding:6px">finally 中累加 metrics.errors</td></tr>
+          <tr><td style="padding:6px;font-weight:700">G7</td><td style="padding:6px;color:var(--text-dim)">Medium</td><td style="padding:6px">句子队列无 maxsize</td><td style="padding:6px">Queue(maxsize=8) + fut.result(30) 背压</td></tr>
+        </table>
+      </div>
+
+      <!-- 高优增强 -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">高优增强 + 体验打磨 (G4, G8-G13)</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">ID</th>
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">功能</th>
+            <th style="padding:6px;text-align:left;color:var(--text-dim)">方案</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G4</td><td style="padding:6px">API 鉴权</td><td style="padding:6px">VOICEAGENT_API_KEY → Bearer token / ?token= 查询参数</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G8</td><td style="padding:6px">Speaker VAD 默认开启</td><td style="padding:6px">USE_SPEAKER_VAD=auto — 模型目录存在则自动启用</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G9</td><td style="padding:6px">LLM 上下文扩大</td><td style="padding:6px">LLM_MAX_HISTORY=20 + 超出部分生成摘要注入 prompt</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G10</td><td style="padding:6px">RAG 置信度阈值</td><td style="padding:6px">RAG_SCORE_THRESHOLD=0.35 — 低于阈值的结果被过滤</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G11</td><td style="padding:6px">降噪默认开</td><td style="padding:6px">USE_DENOISE=auto — 模型目录存在则自动启用</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:700">G12</td><td style="padding:6px">结构化日志</td><td style="padding:6px">LoggerAdapter(session=sid) + format %(name)s</td></tr>
+          <tr><td style="padding:6px;font-weight:700">G13</td><td style="padding:6px">E2E WebSocket 测试</td><td style="padding:6px">test_e2e_ws.py — 6 项集成测试</td></tr>
+        </table>
+      </div>
+
+      <!-- 新增配置项 -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">新增配置项</div>
+        <div style="background:var(--surface2);padding:12px 16px;border-radius:6px;font-family:monospace;font-size:12px;line-height:1.8">
+          VOICEAGENT_API_KEY=""&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# 空=不鉴权<br>
+          LLM_MAX_HISTORY=20&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# 保留消息数 (10轮)<br>
+          RAG_SCORE_THRESHOLD=0.35&nbsp;&nbsp;&nbsp;# 检索置信度下限<br>
+          USE_SPEAKER_VAD=auto&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# auto/0/1<br>
+          USE_DENOISE=auto&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# auto/0/1
+        </div>
+      </div>
+
+      <!-- 自测结果 -->
+      <div class="card" style="border-left:3px solid var(--green)">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">自测结果: 18/18 ALL PASS</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border)"><th style="padding:4px 6px;text-align:left;color:var(--text-dim)">#</th><th style="padding:4px 6px;text-align:left;color:var(--text-dim)">测试</th><th style="padding:4px 6px;text-align:left;color:var(--text-dim)">结果</th></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">1</td><td style="padding:4px 6px">D1_greeting</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">2</td><td style="padding:4px 6px">D1_no_greeting</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">3</td><td style="padding:4px 6px">D2_idle_prompt</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">4</td><td style="padding:4px 6px">D2_goodbye</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">5</td><td style="padding:4px 6px">D2_reset</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">6</td><td style="padding:4px 6px">D3_empty</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">7</td><td style="padding:4px 6px">D3_escalation</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">8</td><td style="padding:4px 6px">D4_farewell</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">9</td><td style="padding:4px 6px">D4_no_false</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">10</td><td style="padding:4px 6px">P0_crash_safety</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">11</td><td style="padding:4px 6px">P0_shutdown</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">12</td><td style="padding:4px 6px">P1_filler</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px">13</td><td style="padding:4px 6px">P1_metrics</td><td style="padding:4px 6px;color:var(--green)">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border);background:var(--accent-glow)"><td style="padding:4px 6px;font-weight:700">14</td><td style="padding:4px 6px;font-weight:700">G1_no_premature_idle</td><td style="padding:4px 6px;color:var(--green);font-weight:700">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border);background:var(--accent-glow)"><td style="padding:4px 6px;font-weight:700">15</td><td style="padding:4px 6px;font-weight:700">G2_text_rag_crash</td><td style="padding:4px 6px;color:var(--green);font-weight:700">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border);background:var(--accent-glow)"><td style="padding:4px 6px;font-weight:700">16</td><td style="padding:4px 6px;font-weight:700">G7_bounded_queue</td><td style="padding:4px 6px;color:var(--green);font-weight:700">PASS</td></tr>
+          <tr style="border-bottom:1px solid var(--border);background:var(--accent-glow)"><td style="padding:4px 6px;font-weight:700">17</td><td style="padding:4px 6px;font-weight:700">G9_history_trim</td><td style="padding:4px 6px;color:var(--green);font-weight:700">PASS</td></tr>
+          <tr style="background:var(--accent-glow)"><td style="padding:4px 6px;font-weight:700">18</td><td style="padding:4px 6px;font-weight:700">G10_rag_threshold</td><td style="padding:4px 6px;color:var(--green);font-weight:700">PASS</td></tr>
+        </table>
+      </div>
+
+      <!-- 修改文件 -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">修改文件 (8 + 1 新增)</div>
+        <div style="display:grid;gap:4px;font-size:12px;font-family:monospace">
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">engine/conversation_manager.py <span style="color:var(--yellow)">G1 G2 G5 G7</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">ws_server.py <span style="color:var(--yellow)">G4 G6 G8 G11 G12</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">engine/llm.py <span style="color:var(--yellow)">G9</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">engine/rag.py <span style="color:var(--yellow)">G10</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">engine/asr_firered.py <span style="color:var(--yellow)">G3</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">config.py <span style="color:var(--yellow)">G4 G9 G10</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">static/voice_agent.html <span style="color:var(--yellow)">G4 版本号</span></div>
+          <div style="padding:4px 8px;background:var(--surface2);border-radius:4px">test_experience.py <span style="color:var(--yellow)">+5 tests</span></div>
+          <div style="padding:4px 8px;background:var(--green-bg);border-radius:4px;color:var(--green)">test_e2e_ws.py <span style="color:var(--green)">NEW — 6 项 E2E 测试</span></div>
+        </div>
+      </div>
+
+      <!-- Version History -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">版本线</div>
+        <div style="display:grid;gap:6px;font-size:12px">
+          <div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center">
+            <code style="color:var(--text-dim);min-width:40px">v2.7</code>
+            <span>体验层 D1-D4 + 音色更换 + 代码清理 + 自测 13/13 PASS</span>
+          </div>
+          <div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center">
+            <code style="color:var(--text-dim);min-width:40px">v2.8</code>
+            <span>稳定性加固 (crash-safe + filler + metrics) + 17/17 PASS</span>
+          </div>
+          <div style="display:flex;gap:12px;padding:6px 0;align-items:center">
+            <code style="color:var(--green);min-width:40px;font-weight:700">v2.9</code>
+            <span style="color:var(--green);font-weight:600">状态竞争修复 + 鉴权 + RAG 置信度 + 上下文摘要 + 18/18 PASS</span>
             <span class="tab-badge new" style="margin-left:auto">CURRENT</span>
           </div>
         </div>

@@ -1,15 +1,12 @@
-"""Production Conversation Manager v2.8 — crash-safe + filler + metrics.
+"""Production Conversation Manager v2.9 — state-race fix + hardening.
 
-v2.8 (over v2.5):
-  P0 — Exception safety: _run_pipeline + _stream_llm_tts wrapped in try/except
-  P0 — LLM producer: awaited executor, guaranteed sentinel, queue timeout
-  P0 — ASR/RAG failures degrade gracefully instead of crashing
-  P0 — Task registry: all background tasks tracked + cancelled on disconnect
-  P1 — Filler words activated: play cached filler on THINKING entry
-  P1 — Interrupted LLM partial text saved to history (no context drift)
-  P1 — Metrics collector: session-level latency/error tracking
+v2.9 (over v2.8):
+  G1 — Fix: _run_pipeline awaits _stream_llm_tts; finally only resets THINKING
+  G2 — Fix: handle_text_input RAG wrapped in try/except
+  G5 — Fix: speculative ASR task tracked in _tasks for clean shutdown
+  G7 — Fix: sentence_queue bounded (maxsize=8) with thread-side backpressure
 
-v2.5 features preserved (D1–D4 experience layer).
+v2.8 features preserved (crash-safe, filler, metrics, D1-D4 experience).
 v2.2 features preserved (speculative ASR, captioner, dual-layer barge-in,
 adaptive endpointing, THINKING buffer).
 
@@ -331,7 +328,7 @@ class ConversationManager:
             except Exception:
                 self._spec_asr_result = None
 
-        self._spec_asr_task = asyncio.create_task(_run())
+        self._spec_asr_task = self._track_task(_run(), name=f"spec-asr-{self._turn}")
         engine_name = "Moonshine" if self.spec_asr else "SenseVoice"
         log.debug("Speculative ASR (%s) launched on %d samples", engine_name, len(audio_snapshot))
 
@@ -407,7 +404,7 @@ class ConversationManager:
             except Exception:
                 pass
         finally:
-            if self.state in (State.THINKING, State.SPEAKING):
+            if self.state == State.THINKING:
                 self.state = State.IDLE
                 self._idle_since = time.monotonic()
                 try:
@@ -558,11 +555,12 @@ class ConversationManager:
             self._stream_llm_tts(llm_user_text, rag_context, turn, t_start, asr_ms, rag_ms),
             name=f"llm-tts-{turn}",
         )
+        await self._speaking_task
 
     async def _stream_llm_tts(self, user_text, rag_context, turn, t_start, asr_ms, rag_ms):
         """Streaming: LLM sentences → TTS per-chunk → send. Crash-safe."""
         loop = asyncio.get_event_loop()
-        sentence_queue: asyncio.Queue = asyncio.Queue()
+        sentence_queue: asyncio.Queue = asyncio.Queue(maxsize=8)
         full_response = ""
         sentence_count = 0
         first_ttfa = None
@@ -574,7 +572,8 @@ class ConversationManager:
                 for s in self.llm.stream_sentences(user_text, rag_context=rag_context):
                     if self._cancel_speaking.is_set():
                         break
-                    asyncio.run_coroutine_threadsafe(sentence_queue.put(s), loop)
+                    fut = asyncio.run_coroutine_threadsafe(sentence_queue.put(s), loop)
+                    fut.result(timeout=30)
             except Exception as e:
                 asyncio.run_coroutine_threadsafe(
                     sentence_queue.put({"_error": str(e)}), loop
@@ -729,10 +728,17 @@ class ConversationManager:
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
 
-        rag_result = await loop.run_in_executor(None, self.rag.get_context, text)
+        rag_context = ""
+        rag_ms = 0.0
+        try:
+            rag_result = await loop.run_in_executor(None, self.rag.get_context, text)
+            rag_context = rag_result["context"]
+            rag_ms = rag_result["total_ms"]
+        except Exception as e:
+            log.warning("[Turn %d] RAG failed in text_input (degraded): %s", self._turn, e)
         await self._send({
-            "type": "rag", "context": rag_result["context"],
-            "latency_ms": round(rag_result["total_ms"], 1), "turn": self._turn,
+            "type": "rag", "context": rag_context,
+            "latency_ms": round(rag_ms, 1), "turn": self._turn,
         })
 
         self._cancel_speaking.clear()
@@ -741,10 +747,7 @@ class ConversationManager:
         await self._send({"type": "state", "state": "speaking"})
 
         self._speaking_task = self._track_task(
-            self._stream_llm_tts(
-                text, rag_result["context"], self._turn,
-                t_start, 0, rag_result["total_ms"]
-            ),
+            self._stream_llm_tts(text, rag_context, self._turn, t_start, 0, rag_ms),
             name=f"text-tts-{self._turn}",
         )
 

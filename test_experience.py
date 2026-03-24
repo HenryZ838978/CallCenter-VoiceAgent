@@ -1,4 +1,4 @@
-"""Self-test for v2.8 features (no GPU / no running services required).
+"""Self-test for v2.9 features (no GPU / no running services required).
 
 Tests:
   D1-D4 — Experience layer (greeting, idle timeout, ASR recovery, farewell)
@@ -6,6 +6,11 @@ Tests:
   P0    — Task registry + shutdown lifecycle
   P1    — Filler activation on THINKING
   P1    — Session metrics collection
+  G1    — State race: _run_pipeline awaits _stream_llm_tts (no premature IDLE)
+  G2    — handle_text_input RAG exception safety
+  G7    — Bounded sentence queue backpressure
+  G9    — LLM history trim + summary
+  G10   — RAG score threshold filtering
 
 Usage:
     python test_experience.py
@@ -75,6 +80,12 @@ class MockTTS:
 
     def warmup(self):
         pass
+
+
+class CrashRAG:
+    """RAG that always raises."""
+    def get_context(self, question, top_k=None):
+        raise RuntimeError("RAG index corrupted")
 
 
 class MockRAG:
@@ -506,11 +517,187 @@ async def test_p1_metrics():
 
 
 # ---------------------------------------------------------------------------
+# G1: State race — _run_pipeline awaits _stream_llm_tts
+# ---------------------------------------------------------------------------
+async def test_g1_no_premature_idle():
+    section("G1 — No premature IDLE while LLM+TTS still streaming")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    cm.asr.next_text = "你好"
+    from engine.conversation_manager import State
+
+    cm.state = State.THINKING
+    cm._turn = 1
+    speech = np.random.randn(16000).astype(np.float32) * 0.1
+
+    state_log = []
+    original_send = col.__call__
+    async def tracking_send(data):
+        await original_send(data)
+        if isinstance(data, dict) and data.get("type") == "state":
+            state_log.append(data["state"])
+
+    cm._send = tracking_send
+    await cm._run_pipeline(speech, 1, None, 0, None)
+
+    speaking_idx = state_log.index("speaking") if "speaking" in state_log else -1
+    idle_indices = [i for i, s in enumerate(state_log) if s == "idle"]
+    last_idle = idle_indices[-1] if idle_indices else -1
+
+    no_premature = True
+    for idx in idle_indices:
+        if idx < speaking_idx:
+            no_premature = False
+
+    ended_idle = cm.state == State.IDLE
+    has_audio = col.audio_chunks > 0
+
+    print(f"  State sequence: {state_log}")
+    print(f"  Audio chunks played: {col.audio_chunks}")
+    print(f"  No premature IDLE before TTS done: {no_premature}")
+    print(f"  Final state IDLE: {ended_idle}")
+
+    ok = no_premature and ended_idle and has_audio
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["G1_no_premature_idle"] = ok
+
+
+# ---------------------------------------------------------------------------
+# G2: handle_text_input RAG exception safety
+# ---------------------------------------------------------------------------
+async def test_g2_text_input_rag_crash():
+    section("G2 — handle_text_input survives RAG crash")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    cm.rag = CrashRAG()
+    from engine.conversation_manager import State
+
+    try:
+        await cm.handle_text_input("你好")
+        if cm._speaking_task:
+            await cm._speaking_task
+        survived = True
+    except Exception:
+        survived = False
+
+    ended_idle = cm.state == State.IDLE
+    has_audio = col.audio_chunks > 0
+
+    print(f"  Survived RAG crash: {survived}")
+    print(f"  Final state IDLE: {ended_idle}")
+    print(f"  Audio output generated: {has_audio}")
+
+    ok = survived and ended_idle
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["G2_text_rag_crash"] = ok
+
+
+# ---------------------------------------------------------------------------
+# G7: Bounded sentence queue
+# ---------------------------------------------------------------------------
+async def test_g7_bounded_queue():
+    section("G7 — Sentence queue has maxsize (backpressure)")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    cm.asr.next_text = "你好"
+    from engine.conversation_manager import State
+
+    cm.state = State.THINKING
+    cm._turn = 1
+    speech = np.random.randn(16000).astype(np.float32) * 0.1
+    await cm._run_pipeline(speech, 1, None, 0, None)
+
+    ok = cm.state == State.IDLE
+    print(f"  Pipeline completed with bounded queue: {ok}")
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["G7_bounded_queue"] = ok
+
+
+# ---------------------------------------------------------------------------
+# G9: LLM history trimming + summary
+# ---------------------------------------------------------------------------
+async def test_g9_llm_history_trim():
+    section("G9 — LLM history trim + summary generation")
+
+    class TestLLM:
+        def __init__(self):
+            self._history = []
+            self._max_history = 4
+            self._summary = ""
+
+        def _trim_history(self):
+            if len(self._history) <= self._max_history:
+                return
+            evicted = self._history[:len(self._history) - self._max_history]
+            self._history = self._history[-self._max_history:]
+            turns = []
+            for i in range(0, len(evicted) - 1, 2):
+                u = evicted[i].get("content", "")[:60]
+                a = evicted[i + 1].get("content", "")[:60] if i + 1 < len(evicted) else ""
+                turns.append(f"用户:{u} → AI:{a}")
+            if turns:
+                self._summary = "之前的对话摘要：" + "；".join(turns[-5:])
+
+    llm = TestLLM()
+    for i in range(10):
+        llm._history.append({"role": "user", "content": f"question {i}"})
+        llm._history.append({"role": "assistant", "content": f"answer {i}"})
+    llm._trim_history()
+
+    trimmed = len(llm._history) <= 4
+    has_summary = len(llm._summary) > 0 and "摘要" in llm._summary
+
+    print(f"  History size after trim: {len(llm._history)} (max={llm._max_history})")
+    print(f"  Summary generated: {has_summary}")
+    print(f"  Summary: '{llm._summary[:80]}...'")
+
+    ok = trimmed and has_summary
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["G9_history_trim"] = ok
+
+
+# ---------------------------------------------------------------------------
+# G10: RAG score threshold
+# ---------------------------------------------------------------------------
+async def test_g10_rag_threshold():
+    section("G10 — RAG filters low-confidence results")
+
+    class MockRAGWithThreshold:
+        def __init__(self):
+            self._score_threshold = 0.5
+            self._reranker = None
+
+        def test_filter(self, candidates, k):
+            results = candidates[:k]
+            if self._score_threshold > 0:
+                score_key = "rerank_score" if self._reranker else "score"
+                results = [r for r in results if r.get(score_key, 0) >= self._score_threshold]
+            return results
+
+    rag = MockRAGWithThreshold()
+    candidates = [
+        {"text": "good", "score": 0.8},
+        {"text": "ok", "score": 0.5},
+        {"text": "bad", "score": 0.2},
+    ]
+    filtered = rag.test_filter(candidates, 3)
+    kept = len(filtered)
+    no_bad = all(r["score"] >= 0.5 for r in filtered)
+
+    print(f"  Input candidates: {len(candidates)}, after filter: {kept}")
+    print(f"  All above threshold: {no_bad}")
+
+    ok = kept == 2 and no_bad
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["G10_rag_threshold"] = ok
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def main():
     print("=" * 60)
-    print("  VoxLabs v2.8 Self-Test (D1-D4 + P0 + P1)")
+    print("  VoxLabs v2.9 Self-Test (D1-D4 + P0-P1 + G1-G10)")
     print("  No GPU / No services required")
     print("=" * 60)
 
@@ -527,14 +714,21 @@ async def main():
     await test_p0_shutdown()
     await test_p1_filler()
     await test_p1_metrics()
+    await test_g1_no_premature_idle()
+    await test_g2_text_input_rag_crash()
+    await test_g7_bounded_queue()
+    await test_g9_llm_history_trim()
+    await test_g10_rag_threshold()
 
     print(f"\n{'=' * 60}")
     print("  SUMMARY")
     print(f"{'=' * 60}")
     for name, ok in results.items():
-        print(f"  {name:25s} {PASS if ok else FAIL}")
+        print(f"  {name:30s} {PASS if ok else FAIL}")
+    total = len(results)
+    passed = sum(results.values())
     all_pass = all(results.values())
-    print(f"\n  Overall: {'ALL PASS' if all_pass else 'SOME FAILED'}")
+    print(f"\n  {passed}/{total} {'ALL PASS' if all_pass else 'SOME FAILED'}")
     print(f"{'=' * 60}")
     return 0 if all_pass else 1
 

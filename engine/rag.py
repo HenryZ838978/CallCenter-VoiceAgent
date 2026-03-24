@@ -16,12 +16,13 @@ import faiss
 class RAGEngine:
     def __init__(self, embed_model_dir: str, device: str = "cuda:0",
                  reranker_model_dir: str = None, top_k: int = 3,
-                 rerank_top_k: int = 5):
+                 rerank_top_k: int = 5, score_threshold: float = 0.0):
         self._embed_model_dir = embed_model_dir
         self._reranker_model_dir = reranker_model_dir
         self._device = device
         self._top_k = top_k
         self._rerank_top_k = rerank_top_k
+        self._score_threshold = score_threshold
 
         self._embedder = None
         self._reranker = None
@@ -114,6 +115,9 @@ class RAGEngine:
             candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
 
         results = candidates[:k]
+        if self._score_threshold > 0:
+            score_key = "rerank_score" if self._reranker else "score"
+            results = [r for r in results if r.get(score_key, 0) >= self._score_threshold]
         total_ms = (time.perf_counter() - t0) * 1000
 
         return {
