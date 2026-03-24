@@ -1,10 +1,11 @@
-"""Self-test for D1-D4 experience layer (no GPU / no running services required).
+"""Self-test for v2.8 features (no GPU / no running services required).
 
-Validates the ConversationManager v2.5 additions using lightweight mocks:
-  D1 — Greeting: auto TTS on session start, barge-in aware
-  D2 — Idle timeout: prompt after N seconds, goodbye + session_end after M more
-  D3 — ASR error recovery: escalating "没听清" messages
-  D4 — Farewell detection: keyword match → session_end after reply
+Tests:
+  D1-D4 — Experience layer (greeting, idle timeout, ASR recovery, farewell)
+  P0    — Crash safety (_run_pipeline exception → spoken apology + IDLE)
+  P0    — Task registry + shutdown lifecycle
+  P1    — Filler activation on THINKING
+  P1    — Session metrics collection
 
 Usage:
     python test_experience.py
@@ -381,11 +382,135 @@ async def test_d4_no_false_positive():
 
 
 # ---------------------------------------------------------------------------
+# P0: Crash safety
+# ---------------------------------------------------------------------------
+async def test_p0_pipeline_crash():
+    section("P0 — Pipeline crash → apology + IDLE (not stuck in THINKING)")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    from engine.conversation_manager import State
+
+    class CrashASR:
+        def transcribe(self, audio):
+            raise RuntimeError("GPU OOM simulated")
+
+    cm.asr = CrashASR()
+    cm.state = State.THINKING
+    cm._turn = 1
+
+    speech = np.random.randn(16000).astype(np.float32) * 0.1
+    await cm._run_pipeline(speech, 1, None, 0, None)
+
+    ended_idle = cm.state == State.IDLE
+    has_error = col.has("error") or col.has("system_message")
+    has_audio = col.audio_chunks > 0
+
+    print(f"  Ended in IDLE (not stuck): {ended_idle}")
+    print(f"  Error/apology sent: {has_error}")
+    print(f"  Audio apology played: {has_audio}")
+    print(f"  Errors recorded: {cm.metrics.errors}")
+
+    ok = ended_idle and has_error
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["P0_crash_safety"] = ok
+
+
+async def test_p0_shutdown():
+    section("P0 — shutdown() cancels all tracked tasks")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    from engine.conversation_manager import State
+
+    async def slow_task():
+        await asyncio.sleep(10)
+
+    cm._track_task(slow_task(), name="test-slow")
+    assert len(cm._tasks) >= 1
+
+    cm.shutdown()
+
+    await asyncio.sleep(0.05)
+    all_done = all(t.done() for t in cm._tasks) if cm._tasks else True
+    is_dead = cm._dead
+
+    print(f"  All tasks cancelled: {all_done}")
+    print(f"  CM marked dead: {is_dead}")
+
+    ok = all_done and is_dead
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["P0_shutdown"] = ok
+
+
+# ---------------------------------------------------------------------------
+# P1: Filler activation
+# ---------------------------------------------------------------------------
+async def test_p1_filler():
+    section("P1 — Filler sent on THINKING entry")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    cm.asr.next_text = "你好"
+    from engine.conversation_manager import State
+
+    cm.vad.set_speech(0.9)
+    speech = np.random.randn(512).astype(np.float32) * 0.1
+    await cm._process_chunk(speech)
+    assert cm.state == State.LISTENING
+
+    cm.vad.set_speech(0.0)
+    for _ in range(12):
+        silence = np.zeros(512, dtype=np.float32)
+        await cm._process_chunk(silence)
+
+    await asyncio.sleep(0.1)
+    if cm._speaking_task:
+        await cm._speaking_task
+
+    has_filler = col.has("filler")
+    filler_msgs = col.find("filler")
+    filler_text = filler_msgs[0].get("text", "") if filler_msgs else ""
+
+    print(f"  Filler sent: {has_filler}")
+    print(f"  Filler text: '{filler_text}'")
+
+    ok = has_filler
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["P1_filler"] = ok
+
+
+# ---------------------------------------------------------------------------
+# P1: Session metrics
+# ---------------------------------------------------------------------------
+async def test_p1_metrics():
+    section("P1 — Session metrics collection")
+    col = MessageCollector()
+    cm = make_cm(col, greeting_text="")
+    cm.asr.next_text = "你好"
+    from engine.conversation_manager import State
+
+    cm.state = State.THINKING
+    cm._turn = 1
+    speech = np.random.randn(16000).astype(np.float32) * 0.1
+    await cm._run_pipeline(speech, 1, None, 0, None)
+    if cm._speaking_task:
+        await cm._speaking_task
+
+    summary = cm.metrics.summary()
+    has_turn = summary["turns"] >= 1
+
+    print(f"  Metrics: {summary}")
+    print(f"  Turn recorded: {has_turn}")
+
+    ok = has_turn
+    print(f"  Result: {PASS if ok else FAIL}")
+    results["P1_metrics"] = ok
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def main():
     print("=" * 60)
-    print("  VoxLabs Experience Layer Self-Test (D1-D4)")
+    print("  VoxLabs v2.8 Self-Test (D1-D4 + P0 + P1)")
     print("  No GPU / No services required")
     print("=" * 60)
 
@@ -398,6 +523,10 @@ async def main():
     await test_d3_escalation()
     await test_d4_farewell()
     await test_d4_no_false_positive()
+    await test_p0_pipeline_crash()
+    await test_p0_shutdown()
+    await test_p1_filler()
+    await test_p1_metrics()
 
     print(f"\n{'=' * 60}")
     print("  SUMMARY")

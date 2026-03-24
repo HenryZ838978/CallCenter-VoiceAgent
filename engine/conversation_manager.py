@@ -1,13 +1,17 @@
-"""Production Conversation Manager v2.5 — experience layer (D1-D4).
+"""Production Conversation Manager v2.8 — crash-safe + filler + metrics.
 
-v2.5 additions:
-  D1 — Auto-greeting on session start (TTS, barge-in aware)
-  D2 — Idle timeout: prompt after N seconds, goodbye + session_end after M more
-  D3 — ASR error recovery: "没听清" with consecutive-failure escalation
-  D4 — Farewell detection: keyword match → session_end after agent reply
+v2.8 (over v2.5):
+  P0 — Exception safety: _run_pipeline + _stream_llm_tts wrapped in try/except
+  P0 — LLM producer: awaited executor, guaranteed sentinel, queue timeout
+  P0 — ASR/RAG failures degrade gracefully instead of crashing
+  P0 — Task registry: all background tasks tracked + cancelled on disconnect
+  P1 — Filler words activated: play cached filler on THINKING entry
+  P1 — Interrupted LLM partial text saved to history (no context drift)
+  P1 — Metrics collector: session-level latency/error tracking
 
-All v2.2 features preserved (speculative ASR, paralinguistic captioner,
-dual-layer barge-in, adaptive endpointing, THINKING buffer).
+v2.5 features preserved (D1–D4 experience layer).
+v2.2 features preserved (speculative ASR, captioner, dual-layer barge-in,
+adaptive endpointing, THINKING buffer).
 
 States:
   IDLE       → waiting for user
@@ -62,6 +66,40 @@ def _rms(chunk: np.ndarray) -> float:
     return float(np.sqrt(np.mean(chunk ** 2)))
 
 
+class _SessionMetrics:
+    """Lightweight in-memory metrics for one session."""
+    __slots__ = ("turns", "errors", "asr_ms_list", "llm_ms_list", "tts_ms_list", "fr_ms_list")
+
+    def __init__(self):
+        self.turns = 0
+        self.errors = 0
+        self.asr_ms_list: list[float] = []
+        self.llm_ms_list: list[float] = []
+        self.tts_ms_list: list[float] = []
+        self.fr_ms_list: list[float] = []
+
+    def record_turn(self, asr_ms=0.0, llm_ms=0.0, tts_ms=0.0, fr_ms=0.0):
+        self.turns += 1
+        if asr_ms: self.asr_ms_list.append(asr_ms)
+        if llm_ms: self.llm_ms_list.append(llm_ms)
+        if tts_ms: self.tts_ms_list.append(tts_ms)
+        if fr_ms: self.fr_ms_list.append(fr_ms)
+
+    def record_error(self):
+        self.errors += 1
+
+    def summary(self) -> dict:
+        def _avg(lst): return round(sum(lst) / len(lst), 1) if lst else 0
+        return {
+            "turns": self.turns,
+            "errors": self.errors,
+            "avg_asr_ms": _avg(self.asr_ms_list),
+            "avg_llm_ms": _avg(self.llm_ms_list),
+            "avg_tts_ms": _avg(self.tts_ms_list),
+            "avg_first_response_ms": _avg(self.fr_ms_list),
+        }
+
+
 class ConversationManager:
     def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable],
                  captioner=None, spec_asr=None, turn_detector=None, denoiser=None,
@@ -85,6 +123,7 @@ class ConversationManager:
         self._turn = 0
         self._speaking_task: Optional[asyncio.Task] = None
         self._cancel_speaking = asyncio.Event()
+        self._dead = False
 
         self._barge_confirm_count = 0
         self._thinking_extra_buffer = []
@@ -93,6 +132,12 @@ class ConversationManager:
         self._spec_asr_task: Optional[asyncio.Task] = None
         self._spec_asr_result: Optional[dict] = None
         self._spec_asr_audio_len = 0
+
+        self._tasks: set[asyncio.Task] = set()
+
+        self.metrics = _SessionMetrics()
+
+        self._error_apology = "抱歉系统开了个小差，您能再说一次吗？"
 
         # --- D1-D4 experience layer ---
         cfg = experience_config or {}
@@ -112,6 +157,12 @@ class ConversationManager:
         self._idle_goodbye_sent = False
         self._consecutive_empty_asr = 0
         self._session_ending = False
+
+    def _track_task(self, coro, *, name: str = "") -> asyncio.Task:
+        task = asyncio.create_task(coro, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
 
     def reset(self):
         self.state = State.IDLE
@@ -133,6 +184,16 @@ class ConversationManager:
         self._idle_goodbye_sent = False
         self._consecutive_empty_asr = 0
         self._session_ending = False
+
+    def shutdown(self):
+        """Cancel all tracked tasks. Call on WebSocket disconnect."""
+        self._dead = True
+        self._cancel_speaking.set()
+        for t in list(self._tasks):
+            if not t.done():
+                t.cancel()
+        self._tasks.clear()
+        self.reset()
 
     def _cancel_speculative_asr(self):
         if self._spec_asr_task and not self._spec_asr_task.done():
@@ -302,6 +363,9 @@ class ConversationManager:
         self._turn += 1
         await self._send({"type": "state", "state": "thinking"})
 
+        if self.filler:
+            await self._send_filler()
+
         audio = np.concatenate(self._audio_buffer) if self._audio_buffer else np.array([], dtype=np.float32)
         self._audio_buffer = []
 
@@ -312,16 +376,49 @@ class ConversationManager:
         self._spec_asr_task = None
         self._spec_asr_audio_len = 0
 
-        asyncio.create_task(self._run_pipeline(audio, self._turn, spec_result, spec_audio_len, spec_task))
+        self._track_task(
+            self._run_pipeline(audio, self._turn, spec_result, spec_audio_len, spec_task),
+            name=f"pipeline-{self._turn}",
+        )
 
     async def _run_pipeline(self, audio: np.ndarray, turn: int,
                             spec_result: Optional[dict], spec_audio_len: int,
                             spec_task: Optional[asyncio.Task]):
-        """Full pipeline: denoise → (speculative) ASR → paralinguistic → RAG → LLM(streaming) → TTS → play."""
+        """Full pipeline with crash safety. Any exception → spoken apology + IDLE."""
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
 
-        # 0. Denoise (if available)
+        try:
+            await self._run_pipeline_inner(
+                audio, turn, spec_result, spec_audio_len, spec_task,
+                loop, t_start,
+            )
+        except asyncio.CancelledError:
+            log.info("[Turn %d] Pipeline cancelled (disconnect?)", turn)
+        except Exception as e:
+            log.error("[Turn %d] Pipeline CRASHED: %s", turn, e, exc_info=True)
+            self.metrics.record_error()
+            try:
+                await self._send({"type": "error", "message": str(e), "turn": turn})
+                self._cancel_speaking.clear()
+                self.state = State.SPEAKING
+                await self._send({"type": "state", "state": "speaking"})
+                await self._play_system_tts(self._error_apology, turn)
+            except Exception:
+                pass
+        finally:
+            if self.state in (State.THINKING, State.SPEAKING):
+                self.state = State.IDLE
+                self._idle_since = time.monotonic()
+                try:
+                    await self._send({"type": "state", "state": "idle"})
+                except Exception:
+                    pass
+
+    async def _run_pipeline_inner(self, audio, turn, spec_result, spec_audio_len,
+                                  spec_task, loop, t_start):
+        """Inner pipeline logic — exceptions propagate to _run_pipeline wrapper."""
+        # 0. Denoise
         if self.denoiser and len(audio) > CHUNK_SAMPLES * 3:
             audio = await loop.run_in_executor(None, self.denoiser.process, audio)
             log.info("[Turn %d] Denoised %d samples", turn, len(audio))
@@ -341,11 +438,21 @@ class ConversationManager:
             log.info("[Turn %d] Used speculative ASR (saved ~%dms)", turn, round(asr_ms))
             asr_ms = 0.0
         else:
-            asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
-            user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
-            asr_ms = asr_result["latency_ms"]
+            try:
+                asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
+                user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
+                asr_ms = asr_result["latency_ms"]
+            except Exception as e:
+                log.error("[Turn %d] ASR failed: %s", turn, e)
+                self.metrics.record_error()
+                self._cancel_speaking.clear()
+                self.state = State.SPEAKING
+                await self._send({"type": "state", "state": "speaking"})
+                await self._send({"type": "system_message", "text": self._asr_empty_text, "turn": turn})
+                await self._play_system_tts(self._asr_empty_text, turn)
+                return
 
-        # 1b. Auto-enroll speaker on first turn (for SpeakerAwareVAD)
+        # 1b. Auto-enroll speaker on first turn
         if turn == 1 and hasattr(self.vad, 'enroll_speaker') and not self.vad.is_enrolled:
             if len(audio) >= 8000:
                 self.vad.enroll_speaker(audio)
@@ -357,12 +464,15 @@ class ConversationManager:
             self._thinking_extra_buffer = []
             self._thinking_has_speech = False
             if len(extra_audio) > CHUNK_SAMPLES * 3:
-                extra_result = await loop.run_in_executor(None, self.asr.transcribe, extra_audio)
-                extra_text = _ASR_TAG_RE.sub("", extra_result["text"]).strip()
-                if extra_text and len(extra_text) >= 2:
-                    user_text = f"{user_text}，{extra_text}" if user_text else extra_text
-                    asr_ms += extra_result["latency_ms"]
-                    log.info("[Turn %d] Merged late speech: '%s'", turn, extra_text)
+                try:
+                    extra_result = await loop.run_in_executor(None, self.asr.transcribe, extra_audio)
+                    extra_text = _ASR_TAG_RE.sub("", extra_result["text"]).strip()
+                    if extra_text and len(extra_text) >= 2:
+                        user_text = f"{user_text}，{extra_text}" if user_text else extra_text
+                        asr_ms += extra_result["latency_ms"]
+                        log.info("[Turn %d] Merged late speech: '%s'", turn, extra_text)
+                except Exception as e:
+                    log.warning("[Turn %d] Late ASR merge failed: %s", turn, e)
 
         await self._send({"type": "asr", "text": user_text, "latency_ms": round(asr_ms, 1), "turn": turn})
 
@@ -399,7 +509,7 @@ class ConversationManager:
             if asr_ms > 0:
                 self._interrupted_texts = []
 
-        # 3. Paralinguistic captioner (optional, async, non-blocking with timeout)
+        # 3. Paralinguistic captioner
         caption = ""
         caption_ms = 0.0
         if self.captioner and len(audio) >= SAMPLE_RATE:
@@ -419,70 +529,92 @@ class ConversationManager:
                 log.warning("[Turn %d] Captioner failed/timeout: %s", turn, e)
                 caption = ""
 
-        # 4. RAG
-        rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
-        rag_context = rag_result["context"]
-        rag_ms = rag_result["total_ms"]
+        # 4. RAG — degrade gracefully on failure
+        rag_context = ""
+        rag_ms = 0.0
+        try:
+            rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
+            rag_context = rag_result["context"]
+            rag_ms = rag_result["total_ms"]
+        except Exception as e:
+            log.warning("[Turn %d] RAG failed (degraded to no-context): %s", turn, e)
         await self._send({
             "type": "rag", "context": rag_context,
             "latency_ms": round(rag_ms, 1), "turn": turn,
         })
 
-        # 5. Inject caption into user text for LLM
+        # 5. Inject caption
         llm_user_text = user_text
         if caption:
             llm_user_text = f"[语音观察：{caption}]\n用户说：{user_text}"
 
-        # 6. LLM streaming → TTS per sentence → play
+        # 6. LLM streaming → TTS
         self._cancel_speaking.clear()
         self._barge_confirm_count = 0
         self.state = State.SPEAKING
         await self._send({"type": "state", "state": "speaking"})
 
-        self._speaking_task = asyncio.create_task(
-            self._stream_llm_tts(llm_user_text, rag_context, turn, t_start, asr_ms, rag_ms)
+        self._speaking_task = self._track_task(
+            self._stream_llm_tts(llm_user_text, rag_context, turn, t_start, asr_ms, rag_ms),
+            name=f"llm-tts-{turn}",
         )
 
     async def _stream_llm_tts(self, user_text, rag_context, turn, t_start, asr_ms, rag_ms):
-        """Streaming: LLM sentences → TTS per-chunk streaming → send each chunk with cancel check."""
+        """Streaming: LLM sentences → TTS per-chunk → send. Crash-safe."""
         loop = asyncio.get_event_loop()
-        sentence_queue = asyncio.Queue()
+        sentence_queue: asyncio.Queue = asyncio.Queue()
         full_response = ""
         sentence_count = 0
+        first_ttfa = None
+        llm_first_ms = 0.0
+        was_interrupted = False
 
         def _produce_sentences():
-            for s in self.llm.stream_sentences(user_text, rag_context=rag_context):
-                if self._cancel_speaking.is_set():
-                    break
-                asyncio.run_coroutine_threadsafe(sentence_queue.put(s), loop)
-            asyncio.run_coroutine_threadsafe(sentence_queue.put(None), loop)
+            try:
+                for s in self.llm.stream_sentences(user_text, rag_context=rag_context):
+                    if self._cancel_speaking.is_set():
+                        break
+                    asyncio.run_coroutine_threadsafe(sentence_queue.put(s), loop)
+            except Exception as e:
+                asyncio.run_coroutine_threadsafe(
+                    sentence_queue.put({"_error": str(e)}), loop
+                )
+            finally:
+                asyncio.run_coroutine_threadsafe(sentence_queue.put(None), loop)
 
         def _tts_stream_sentence(text):
-            """Generator: yields TTS chunks one at a time."""
-            chunks = []
-            for chunk_data in self.tts.synthesize_stream(text):
-                chunks.append(chunk_data)
-            return chunks
+            return list(self.tts.synthesize_stream(text))
+
+        producer_future = loop.run_in_executor(None, _produce_sentences)
 
         try:
-            loop.run_in_executor(None, _produce_sentences)
-            first_ttfa = None
-
             while True:
                 if self._cancel_speaking.is_set():
+                    was_interrupted = True
                     log.info("[Turn %d] Cancelled before next sentence", turn)
                     break
 
-                s = await sentence_queue.get()
-                if s is None:
+                try:
+                    s = await asyncio.wait_for(sentence_queue.get(), timeout=35.0)
+                except asyncio.TimeoutError:
+                    log.error("[Turn %d] LLM sentence queue timeout (35s)", turn)
+                    self.metrics.record_error()
                     break
 
+                if s is None:
+                    break
+                if "_error" in s:
+                    raise RuntimeError(f"LLM stream error: {s['_error']}")
+
                 if self._cancel_speaking.is_set():
+                    was_interrupted = True
                     break
 
                 sentence = s["sentence"]
                 full_response += sentence
                 sentence_count += 1
+                if sentence_count == 1:
+                    llm_first_ms = s["ttfs_ms"]
 
                 await self._send({
                     "type": "llm_sentence", "text": sentence,
@@ -491,26 +623,30 @@ class ConversationManager:
                 })
 
                 if self._cancel_speaking.is_set():
+                    was_interrupted = True
                     break
 
-                tts_chunks = await loop.run_in_executor(
-                    None, _tts_stream_sentence, sentence
-                )
+                tts_chunks = await loop.run_in_executor(None, _tts_stream_sentence, sentence)
 
                 for i, chunk_data in enumerate(tts_chunks):
                     if self._cancel_speaking.is_set():
+                        was_interrupted = True
                         log.info("[Turn %d] Cancelled mid-TTS chunk %d/%d", turn, i, len(tts_chunks))
                         break
 
                     if sentence_count == 1 and i == 0:
                         first_ttfa = chunk_data.get("ttfa_ms", 0)
                         await self._send({"type": "audio_start", "turn": turn})
-                        first_response_ms = asr_ms + rag_ms + s["ttfs_ms"] + first_ttfa
+                        first_response_ms = asr_ms + rag_ms + llm_first_ms + first_ttfa
+                        self.metrics.record_turn(
+                            asr_ms=asr_ms, llm_ms=llm_first_ms,
+                            tts_ms=first_ttfa, fr_ms=first_response_ms,
+                        )
                         await self._send({
                             "type": "metrics",
                             "asr_ms": round(asr_ms, 1),
                             "rag_ms": round(rag_ms, 1),
-                            "llm_ms": round(s["ttfs_ms"], 1),
+                            "llm_ms": round(llm_first_ms, 1),
                             "tts_ttfa_ms": round(first_ttfa, 1),
                             "first_response_ms": round(first_response_ms, 1),
                             "turn": turn,
@@ -528,11 +664,23 @@ class ConversationManager:
             })
 
         except asyncio.CancelledError:
+            was_interrupted = True
             log.info("[Turn %d] Pipeline cancelled", turn)
         except Exception as e:
-            log.error("[Turn %d] Pipeline error: %s", turn, e, exc_info=True)
+            log.error("[Turn %d] LLM/TTS error: %s", turn, e, exc_info=True)
+            self.metrics.record_error()
             await self._send({"type": "error", "message": str(e), "turn": turn})
         finally:
+            try:
+                await asyncio.wait_for(asyncio.wrap_future(producer_future), timeout=2.0)
+            except Exception:
+                pass
+
+            if was_interrupted and full_response:
+                self._interrupted_texts.append(full_response)
+                log.info("[Turn %d] Saved partial AI response (%d chars) for context",
+                         turn, len(full_response))
+
             if self.state == State.SPEAKING:
                 self.state = State.IDLE
                 self._idle_since = time.monotonic()
@@ -551,6 +699,18 @@ class ConversationManager:
                 return
             await self._send({"_audio": audio_bytes[i:i + TTS_SEND_CHUNK_BYTES]})
             await asyncio.sleep(0)
+
+    async def _send_filler(self):
+        """Send a pre-cached filler audio clip to fill LLM thinking time."""
+        try:
+            filler_text, filler_bytes = self.filler.get_filler()
+            if filler_bytes:
+                await self._send({"type": "filler", "text": filler_text, "turn": self._turn})
+                await self._send({"type": "audio_start", "turn": self._turn})
+                await self._send({"_audio": filler_bytes})
+                log.info("[Turn %d] Filler sent: '%s' (%d bytes)", self._turn, filler_text, len(filler_bytes))
+        except Exception as e:
+            log.warning("Filler send failed: %s", e)
 
     async def handle_text_input(self, text: str):
         """Handle text input (skip ASR)."""
@@ -580,11 +740,12 @@ class ConversationManager:
         self.state = State.SPEAKING
         await self._send({"type": "state", "state": "speaking"})
 
-        self._speaking_task = asyncio.create_task(
+        self._speaking_task = self._track_task(
             self._stream_llm_tts(
                 text, rag_result["context"], self._turn,
                 t_start, 0, rag_result["total_ms"]
-            )
+            ),
+            name=f"text-tts-{self._turn}",
         )
 
     # ------------------------------------------------------------------
@@ -629,8 +790,9 @@ class ConversationManager:
         self._turn += 1
         await self._send({"type": "state", "state": "speaking"})
         await self._send({"type": "system_message", "text": text, "turn": self._turn})
-        self._speaking_task = asyncio.create_task(
-            self._play_system_tts(text, self._turn, session_end_reason)
+        self._speaking_task = self._track_task(
+            self._play_system_tts(text, self._turn, session_end_reason),
+            name=f"system-tts-{self._turn}",
         )
 
     # ------------------------------------------------------------------

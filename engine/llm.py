@@ -1,6 +1,7 @@
 """LLM inference via vLLM OpenAI-compatible API with streaming support."""
 import re
 import time
+import httpx
 from openai import OpenAI
 
 _TAG_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
@@ -13,7 +14,10 @@ class VLLMChat:
     def __init__(self, base_url: str = "http://localhost:8000/v1",
                  model: str = "MiniCPM4.1-8B-GPTQ",
                  system_prompt: str = ""):
-        self._client = OpenAI(base_url=base_url, api_key="dummy")
+        self._client = OpenAI(
+            base_url=base_url, api_key="dummy",
+            timeout=httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=10.0),
+        )
         self._model = model
         self._system_prompt = system_prompt
         self._history = []

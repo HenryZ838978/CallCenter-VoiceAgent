@@ -1,13 +1,8 @@
 """
-VoxLabs Voice Agent v2.0 — Production Full-Duplex WebSocket Server
+VoxLabs Voice Agent v2.8 — Production Full-Duplex WebSocket Server
 
-Architecture:
-  ConversationManager (state machine) orchestrates:
-    Streaming ASR → RAG → LLM(sentence streaming) → TTS(per-sentence) → Audio playback
-  With:
-    Filler words for instant perceived response
-    Barge-in with utterance aggregation
-    Echo suppression via state signaling
+v2.8: crash-safe pipeline, session metrics, dead-socket detection,
+      task lifecycle management, filler activation, barge-in consistency.
 """
 import os
 import sys
@@ -170,8 +165,12 @@ def load_engines():
     log.info("=== All engines loaded (v2.2) ===")
 
 
-app = FastAPI(title="VoxLabs Voice Agent v2.0")
+app = FastAPI(title="VoxLabs Voice Agent v2.8")
 BASE_DIR = Path(__file__).parent
+
+_active_sessions: dict[str, dict] = {}
+_total_sessions = 0
+_total_errors = 0
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -182,22 +181,39 @@ async def index():
 @app.get("/api/info")
 async def api_info():
     rag = engine.get("rag")
+    asr_name = "FireRedASR2-AED" if USE_FIRERED_ASR else "SenseVoiceSmall"
+    asr_fw = "FireRedASR" if USE_FIRERED_ASR else "FunASR"
     return {
-        "version": "2.0",
+        "version": "2.8",
         "models": {
-            "asr": {"name": "SenseVoiceSmall", "framework": "FunASR"},
+            "asr": {"name": asr_name, "framework": asr_fw},
             "llm": {"name": VLLM_MODEL_NAME, "endpoint": VLLM_BASE_URL, "streaming": True},
             "tts": {"name": "VoxCPM 1.5", "framework": "nanovllm", "sample_rate": 44100},
             "embedding": {"name": "bge-small-zh-v1.5"},
         },
-        "features": ["filler_words", "sentence_streaming", "barge_in", "utterance_aggregation"],
+        "features": [
+            "filler_words", "sentence_streaming", "barge_in",
+            "utterance_aggregation", "experience_layer_d1_d4", "crash_safe",
+        ],
         "rag": {"num_docs": len(rag._documents) if rag else 0, "top_k": RAG_TOP_K},
     }
 
 
 @app.get("/api/metrics")
 async def api_metrics():
-    return {"message": "Metrics available per-session via WebSocket"}
+    sessions = []
+    for sid, info in _active_sessions.items():
+        cm = info.get("cm")
+        m = cm.metrics.summary() if cm else {}
+        m["session_id"] = sid
+        m["uptime_s"] = round(time.time() - info["started"], 1)
+        m["state"] = cm.state.value if cm else "unknown"
+        sessions.append(m)
+    return {
+        "total_sessions": _total_sessions,
+        "active_sessions": len(_active_sessions),
+        "sessions": sessions,
+    }
 
 
 @app.get("/api/rag/docs")
@@ -251,14 +267,21 @@ async def ws_voice(ws: WebSocket):
 
     llm = engine["llm_factory"]()
 
+    _ws_dead = False
+
     async def send_fn(data):
+        nonlocal _ws_dead
+        if _ws_dead:
+            return
         try:
             if "_audio" in data:
                 await ws.send_bytes(data["_audio"])
             else:
                 await ws.send_text(json.dumps(data, ensure_ascii=False))
-        except Exception:
-            pass
+        except Exception as e:
+            if not _ws_dead:
+                _ws_dead = True
+                log.warning("[%s] WebSocket send failed (marking dead): %s", session_id, e)
 
     exp_cfg = {
         "greeting_text": GREETING_TEXT,
@@ -283,13 +306,21 @@ async def ws_voice(ws: WebSocket):
         experience_config=exp_cfg,
     )
 
-    await send_fn({"type": "ready", "session_id": session_id, "version": "2.5"})
+    global _total_sessions
+    _total_sessions += 1
+    _active_sessions[session_id] = {"started": time.time(), "cm": cm}
+
+    await send_fn({"type": "ready", "session_id": session_id, "version": "2.8"})
 
     if GREETING_TEXT:
-        asyncio.create_task(cm.start_greeting())
+        cm._track_task(cm.start_greeting(), name="greeting")
 
     try:
         while True:
+            if _ws_dead:
+                log.info("[%s] send_fn dead, exiting loop", session_id)
+                break
+
             data = await ws.receive()
 
             if "bytes" in data and data["bytes"]:
@@ -310,7 +341,10 @@ async def ws_voice(ws: WebSocket):
     except Exception as e:
         log.error("[%s] Error: %s", session_id, e, exc_info=True)
     finally:
-        cm.reset()
+        metrics = cm.metrics.summary()
+        log.info("[%s] Session metrics: %s", session_id, metrics)
+        _active_sessions.pop(session_id, None)
+        cm.shutdown()
 
 
 if __name__ == "__main__":

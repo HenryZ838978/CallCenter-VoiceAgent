@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VoxLabs — Voice Agent v2.0</title>
+<title>VoxLabs — Voice Agent v2.8</title>
 <style>
 :root {
   --bg: #0a0e1a; --surface: #111827; --surface2: #1a2236;
@@ -72,7 +72,7 @@ body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif; backgr
 <body>
 <div class="app">
   <div class="header">
-    <h1>VoxLabs Voice Agent <span style="font-size:12px;color:var(--dim)">v2.0</span></h1>
+    <h1>VoxLabs Voice Agent <span style="font-size:12px;color:var(--dim)">v2.8</span></h1>
     <div class="right">
       <span class="state-badge state-idle" id="stateBadge">IDLE</span>
       <span><span class="status-dot" id="statusDot"></span> <span id="statusText">Disconnected</span></span>
@@ -128,7 +128,7 @@ body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif; backgr
     </div>
   </div>
 
-  <div class="footer">VoxLabs v2.0 — Filler words + Sentence streaming + Barge-in aggregation</div>
+  <div class="footer">VoxLabs v2.8 — Crash-safe pipeline + Filler + Experience layer D1-D4</div>
 </div>
 
 <script>
@@ -245,6 +245,13 @@ function connectWS() {
         stopPlayback();
         playableTurn = 0;
         break;
+      case 'system_message':
+        addMsg('assistant', msg.text, 'system');
+        break;
+      case 'session_end':
+        addMsg('system', '📞 Session ended — ' + (msg.reason || 'unknown'));
+        if (calling) toggleCall();
+        break;
       case 'error':
         addMsg('system', '⚠ ' + msg.message);
         break;
@@ -355,18 +362,11 @@ async function toggleCall() {
       let sum = 0; for (let i = 0; i < arr.length; i++) sum += Math.abs(arr[i]);
       const rms = sum / arr.length / 32768;
       $('vuBar').style.width = Math.min(100, rms * 300) + '%';
-      if (agentState === 'speaking' && rms > 0.03) {
-        bargeHintCount++;
-        if (bargeHintCount >= 3) {
-          stopPlayback();
-          bargeHintCount = 0;
-        }
-      } else if (agentState !== 'speaking') {
+      if (agentState !== 'speaking') {
         bargeHintCount = 0;
       }
     };
     source.connect(workletNode);
-    workletNode.connect(audioCtx.destination);
     calling = true;
     btn.textContent = 'End Call'; btn.classList.add('active');
     setStatus('active', 'In Call'); $('micStatus').textContent = 'On';
