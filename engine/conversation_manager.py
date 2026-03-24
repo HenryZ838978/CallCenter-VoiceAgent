@@ -1,9 +1,13 @@
-"""Production Conversation Manager v2.2 — speculative inference + paralinguistic awareness.
+"""Production Conversation Manager v2.5 — experience layer (D1-D4).
 
-Changes from v2.1:
-  - Speculative ASR: starts after 150ms silence, before endpointing confirmed
-  - Paralinguistic captioner: optional audio scene description injected into LLM prompt
-  - All v2.1 features preserved (dual-layer barge-in, adaptive endpointing, THINKING buffer)
+v2.5 additions:
+  D1 — Auto-greeting on session start (TTS, barge-in aware)
+  D2 — Idle timeout: prompt after N seconds, goodbye + session_end after M more
+  D3 — ASR error recovery: "没听清" with consecutive-failure escalation
+  D4 — Farewell detection: keyword match → session_end after agent reply
+
+All v2.2 features preserved (speculative ASR, paralinguistic captioner,
+dual-layer barge-in, adaptive endpointing, THINKING buffer).
 
 States:
   IDLE       → waiting for user
@@ -51,6 +55,8 @@ SPECULATIVE_ASR_CHUNKS = 5        # ~160ms silence → start speculative ASR
 
 TTS_SEND_CHUNK_BYTES = 8820 * 2   # ~200ms at 44.1kHz 16-bit (larger chunks for network stability)
 
+IDLE_CHECK_INTERVAL_CHUNKS = 31   # ~1s — poll idle timeout at this cadence
+
 
 def _rms(chunk: np.ndarray) -> float:
     return float(np.sqrt(np.mean(chunk ** 2)))
@@ -58,7 +64,8 @@ def _rms(chunk: np.ndarray) -> float:
 
 class ConversationManager:
     def __init__(self, asr, llm, tts, rag, vad, filler, send_fn: Callable[..., Awaitable],
-                 captioner=None, spec_asr=None, turn_detector=None, denoiser=None):
+                 captioner=None, spec_asr=None, turn_detector=None, denoiser=None,
+                 experience_config: dict = None):
         self.asr = asr
         self.llm = llm
         self.tts = tts
@@ -87,6 +94,25 @@ class ConversationManager:
         self._spec_asr_result: Optional[dict] = None
         self._spec_asr_audio_len = 0
 
+        # --- D1-D4 experience layer ---
+        cfg = experience_config or {}
+        self._greeting_text = cfg.get("greeting_text", "")
+        self._idle_timeout_s = cfg.get("idle_timeout_s", 15.0)
+        self._idle_goodbye_s = cfg.get("idle_goodbye_s", 30.0)
+        self._idle_prompt_text = cfg.get("idle_prompt_text", "您还在吗？有什么需要帮助的吗？")
+        self._idle_goodbye_text = cfg.get("idle_goodbye_text", "好的，如果后续有问题随时找我，再见！")
+        self._asr_empty_text = cfg.get("asr_empty_retry_text", "抱歉没太听清，您能再说一次吗？")
+        self._asr_noisy_text = cfg.get("asr_noisy_suggest_text", "您那边环境好像有点嘈杂，要不您试试打字发给我？")
+        self._max_empty_asr = cfg.get("max_consecutive_empty_asr", 3)
+        self._farewell_keywords = cfg.get("farewell_keywords", ["再见", "拜拜", "挂了"])
+
+        self._idle_since: float = time.monotonic()
+        self._idle_chunk_count = 0
+        self._idle_prompted = False
+        self._idle_goodbye_sent = False
+        self._consecutive_empty_asr = 0
+        self._session_ending = False
+
     def reset(self):
         self.state = State.IDLE
         self._audio_buffer = []
@@ -101,6 +127,12 @@ class ConversationManager:
         self.llm.reset()
         if self._speaking_task and not self._speaking_task.done():
             self._speaking_task.cancel()
+        self._idle_since = time.monotonic()
+        self._idle_chunk_count = 0
+        self._idle_prompted = False
+        self._idle_goodbye_sent = False
+        self._consecutive_empty_asr = 0
+        self._session_ending = False
 
     def _cancel_speculative_asr(self):
         if self._spec_asr_task and not self._spec_asr_task.done():
@@ -128,8 +160,18 @@ class ConversationManager:
                 self.state = State.LISTENING
                 self._audio_buffer = [chunk]
                 self._silence_count = 0
+                self._idle_prompted = False
+                self._idle_goodbye_sent = False
+                self._consecutive_empty_asr = 0
                 self._cancel_speculative_asr()
                 await self._send({"type": "state", "state": "listening"})
+            else:
+                self._idle_chunk_count += 1
+                if (self._idle_chunk_count >= IDLE_CHECK_INTERVAL_CHUNKS
+                        and not self._idle_goodbye_sent
+                        and not self._session_ending):
+                    self._idle_chunk_count = 0
+                    await self._check_idle_timeout()
 
         elif self.state == State.LISTENING:
             if is_speech:
@@ -324,10 +366,29 @@ class ConversationManager:
 
         await self._send({"type": "asr", "text": user_text, "latency_ms": round(asr_ms, 1), "turn": turn})
 
+        # D3: ASR empty → error recovery
         if not user_text or len(user_text) < 2:
-            self.state = State.IDLE
-            await self._send({"type": "state", "state": "idle"})
+            self._consecutive_empty_asr += 1
+            if self._consecutive_empty_asr >= self._max_empty_asr:
+                recovery = self._asr_noisy_text
+            else:
+                recovery = self._asr_empty_text
+            log.info("[Turn %d] ASR empty (#%d), recovery: '%s'", turn, self._consecutive_empty_asr, recovery)
+            self._cancel_speaking.clear()
+            self._barge_confirm_count = 0
+            self._speak_log_count = 0
+            self.state = State.SPEAKING
+            await self._send({"type": "state", "state": "speaking"})
+            await self._send({"type": "system_message", "text": recovery, "turn": turn})
+            await self._play_system_tts(recovery, turn)
             return
+
+        self._consecutive_empty_asr = 0
+
+        # D4: Farewell detection
+        if any(kw in user_text for kw in self._farewell_keywords):
+            self._session_ending = True
+            log.info("[Turn %d] Farewell detected in: '%s'", turn, user_text)
 
         # 2. Interrupted text aggregation
         if self._interrupted_texts:
@@ -474,7 +535,11 @@ class ConversationManager:
         finally:
             if self.state == State.SPEAKING:
                 self.state = State.IDLE
+                self._idle_since = time.monotonic()
                 await self._send({"type": "state", "state": "idle"})
+            if self._session_ending:
+                self._session_ending = False
+                await self._send({"type": "session_end", "reason": "farewell"})
 
     async def _send_audio(self, audio_bytes: bytes):
         """Send audio in chunks, checking cancel between each.
@@ -493,6 +558,13 @@ class ConversationManager:
         self.state = State.THINKING
         await self._send({"type": "state", "state": "thinking"})
         await self._send({"type": "asr", "text": text, "latency_ms": 0, "turn": self._turn, "source": "text"})
+
+        self._consecutive_empty_asr = 0
+
+        # D4: Farewell detection for text input
+        if any(kw in text for kw in self._farewell_keywords):
+            self._session_ending = True
+            log.info("[Turn %d] Farewell detected (text): '%s'", self._turn, text)
 
         loop = asyncio.get_event_loop()
         t_start = time.perf_counter()
@@ -514,3 +586,83 @@ class ConversationManager:
                 t_start, 0, rag_result["total_ms"]
             )
         )
+
+    # ------------------------------------------------------------------
+    # D1: Greeting
+    # ------------------------------------------------------------------
+    async def start_greeting(self):
+        """Play greeting message via TTS. Barge-in aware (runs as a task)."""
+        if not self._greeting_text:
+            self._idle_since = time.monotonic()
+            return
+        log.info("Playing greeting: '%s'", self._greeting_text)
+        self._cancel_speaking.clear()
+        self._barge_confirm_count = 0
+        self._speak_log_count = 0
+        self.state = State.SPEAKING
+        self._turn += 1
+        await self._send({"type": "state", "state": "speaking"})
+        await self._send({"type": "system_message", "text": self._greeting_text, "turn": self._turn})
+        await self._play_system_tts(self._greeting_text, self._turn)
+
+    # ------------------------------------------------------------------
+    # D2: Idle timeout
+    # ------------------------------------------------------------------
+    async def _check_idle_timeout(self):
+        elapsed = time.monotonic() - self._idle_since
+        if not self._idle_prompted and elapsed >= self._idle_timeout_s:
+            self._idle_prompted = True
+            log.info("Idle timeout (%.0fs), prompting user", elapsed)
+            await self._speak_system(self._idle_prompt_text)
+        elif self._idle_prompted and not self._idle_goodbye_sent and elapsed >= self._idle_goodbye_s:
+            self._idle_goodbye_sent = True
+            self._session_ending = True
+            log.info("Idle goodbye (%.0fs), ending session", elapsed)
+            await self._speak_system(self._idle_goodbye_text, session_end_reason="idle_timeout")
+
+    async def _speak_system(self, text: str, session_end_reason: str = None):
+        """Schedule a system message as a background speaking task."""
+        self._cancel_speaking.clear()
+        self._barge_confirm_count = 0
+        self._speak_log_count = 0
+        self.state = State.SPEAKING
+        self._turn += 1
+        await self._send({"type": "state", "state": "speaking"})
+        await self._send({"type": "system_message", "text": text, "turn": self._turn})
+        self._speaking_task = asyncio.create_task(
+            self._play_system_tts(text, self._turn, session_end_reason)
+        )
+
+    # ------------------------------------------------------------------
+    # Shared: TTS playback for system-generated messages (D1/D2/D3)
+    # ------------------------------------------------------------------
+    async def _play_system_tts(self, text: str, turn: int, session_end_reason: str = None):
+        """Synthesize and stream TTS for a system message. Handles state transitions."""
+        loop = asyncio.get_event_loop()
+        try:
+            def _gen():
+                return list(self.tts.synthesize_stream(text))
+
+            tts_chunks = await loop.run_in_executor(None, _gen)
+            await self._send({"type": "audio_start", "turn": turn})
+
+            for i, chunk_data in enumerate(tts_chunks):
+                if self._cancel_speaking.is_set():
+                    log.info("[Turn %d] System message interrupted at chunk %d", turn, i)
+                    break
+                audio = chunk_data["audio"]
+                if audio.dtype != np.int16:
+                    audio = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
+                await self._send({"_audio": audio.tobytes()})
+                await asyncio.sleep(0.01)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.error("[Turn %d] System TTS error: %s", turn, e)
+        finally:
+            if self.state == State.SPEAKING:
+                self.state = State.IDLE
+                self._idle_since = time.monotonic()
+                await self._send({"type": "state", "state": "idle"})
+            if session_end_reason and not self._cancel_speaking.is_set():
+                await self._send({"type": "session_end", "reason": session_end_reason})

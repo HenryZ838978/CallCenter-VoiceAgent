@@ -29,6 +29,10 @@ from config import (
     VLLM_BASE_URL, VLLM_MODEL_NAME,
     EMBED_MODEL_DIR, KB_DATA_PATH, RAG_TOP_K,
     SYSTEM_PROMPT_RAG, VOICE_PROMPT_WAV, VOICE_PROMPT_TEXT,
+    GREETING_TEXT, IDLE_TIMEOUT_S, IDLE_GOODBYE_S,
+    IDLE_PROMPT_TEXT, IDLE_GOODBYE_TEXT,
+    ASR_EMPTY_RETRY_TEXT, ASR_NOISY_SUGGEST_TEXT, MAX_CONSECUTIVE_EMPTY_ASR,
+    FAREWELL_KEYWORDS,
 )
 CAPTIONER_URL = os.environ.get("CAPTIONER_URL", "")
 CAPTIONER_MODEL = os.environ.get("CAPTIONER_MODEL", "MiniCPM-o-4.5-awq")
@@ -256,6 +260,18 @@ async def ws_voice(ws: WebSocket):
         except Exception:
             pass
 
+    exp_cfg = {
+        "greeting_text": GREETING_TEXT,
+        "idle_timeout_s": IDLE_TIMEOUT_S,
+        "idle_goodbye_s": IDLE_GOODBYE_S,
+        "idle_prompt_text": IDLE_PROMPT_TEXT,
+        "idle_goodbye_text": IDLE_GOODBYE_TEXT,
+        "asr_empty_retry_text": ASR_EMPTY_RETRY_TEXT,
+        "asr_noisy_suggest_text": ASR_NOISY_SUGGEST_TEXT,
+        "max_consecutive_empty_asr": MAX_CONSECUTIVE_EMPTY_ASR,
+        "farewell_keywords": FAREWELL_KEYWORDS,
+    }
+
     cm = ConversationManager(
         asr=engine["asr"], llm=llm, tts=engine["tts"],
         rag=engine["rag"], vad=vad, filler=engine["filler"],
@@ -264,9 +280,13 @@ async def ws_voice(ws: WebSocket):
         spec_asr=engine.get("spec_asr"),
         turn_detector=engine.get("turn_detector"),
         denoiser=engine.get("denoiser"),
+        experience_config=exp_cfg,
     )
 
-    await send_fn({"type": "ready", "session_id": session_id, "version": "2.0"})
+    await send_fn({"type": "ready", "session_id": session_id, "version": "2.5"})
+
+    if GREETING_TEXT:
+        asyncio.create_task(cm.start_greeting())
 
     try:
         while True:

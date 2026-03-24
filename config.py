@@ -27,9 +27,49 @@ RAG_INDEX_PATH = os.path.join(BASE_DIR, "data", "rag_index")
 RAG_TOP_K = 3
 RAG_GPU = int(os.environ.get("RAG_GPU", "2"))
 
-VOICE_PROMPT_WAV = os.path.join(BASE_DIR, "data", "voice_prompt.wav")
-VOICE_PROMPT_TEXT = "在国内引起了非常大的反响啊，我们也完全没有想到我们的这个工作会以这种方式出圈。"
+VOICE_PROMPT_WAV = os.environ.get(
+    "VOICE_PROMPT_WAV",
+    os.path.join(BASE_DIR, "data", "doubao_ref_7s.wav"),
+)
+VOICE_PROMPT_TEXT = os.environ.get(
+    "VOICE_PROMPT_TEXT",
+    "不是吧？最近怎么老有人说我长的像什么豆包？我照了半天镜子也没看出来呀",
+)
 
+# ---------------------------------------------------------------------------
+# D1: Greeting
+# ---------------------------------------------------------------------------
+GREETING_TEXT = os.environ.get(
+    "GREETING_TEXT",
+    "您好，我是面壁智能的Voice services Agent。有什么可以帮您的呢？",
+)
+
+# ---------------------------------------------------------------------------
+# D2: Idle timeout (seconds)
+# ---------------------------------------------------------------------------
+IDLE_TIMEOUT_S = float(os.environ.get("IDLE_TIMEOUT_S", "15"))
+IDLE_GOODBYE_S = float(os.environ.get("IDLE_GOODBYE_S", "30"))
+IDLE_PROMPT_TEXT = os.environ.get("IDLE_PROMPT_TEXT", "您还在吗？有什么需要帮助的吗？")
+IDLE_GOODBYE_TEXT = os.environ.get("IDLE_GOODBYE_TEXT", "好的，如果后续有问题随时找我，再见！")
+
+# ---------------------------------------------------------------------------
+# D3: Error recovery
+# ---------------------------------------------------------------------------
+ASR_EMPTY_RETRY_TEXT = "抱歉没太听清，您能再说一次吗？"
+ASR_NOISY_SUGGEST_TEXT = "您那边环境好像有点嘈杂，要不您试试打字发给我？"
+MAX_CONSECUTIVE_EMPTY_ASR = 3
+
+# ---------------------------------------------------------------------------
+# D4: Farewell detection
+# ---------------------------------------------------------------------------
+FAREWELL_KEYWORDS = [
+    "再见", "拜拜", "拜了", "没了", "就这些", "没有了",
+    "没其他", "没别的", "谢谢再见", "好的再见", "挂了",
+]
+
+# ---------------------------------------------------------------------------
+# System prompts
+# ---------------------------------------------------------------------------
 SYSTEM_PROMPT = (
     "你是面壁智能的资深客服李明。你在这家公司工作了三年，对产品非常熟悉。\n"
     "说话风格：\n"
