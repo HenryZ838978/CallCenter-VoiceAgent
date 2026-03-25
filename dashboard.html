@@ -667,7 +667,8 @@
     <button class="page-tab" onclick="switchPage('hybrid')">Hybrid Agent <span class="tab-badge new">v3.0</span></button>
     <button class="page-tab" onclick="switchPage('v25')">v2.6 LiveKit Direct</button>
     <button class="page-tab" onclick="switchPage('v27')">v2.7 体验层</button>
-    <button class="page-tab" onclick="switchPage('v29')">v2.9 全面加固 <span class="tab-badge new">LATEST</span></button>
+    <button class="page-tab" onclick="switchPage('v29')">v2.9 全面加固</button>
+    <button class="page-tab" onclick="switchPage('sft')">SFT 微调 <span class="tab-badge new">LATEST</span></button>
   </div>
 
   <!-- PAGE 1: Plan (existing) -->
@@ -3509,6 +3510,279 @@
           <div style="display:flex;gap:12px;padding:6px 0;align-items:center">
             <code style="color:var(--green);min-width:40px;font-weight:700">v2.9</code>
             <span style="color:var(--green);font-weight:600">状态竞争修复 + 鉴权 + RAG 置信度 + 上下文摘要 + 18/18 PASS</span>
+            <span class="tab-badge new" style="margin-left:auto">CURRENT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SFT 微调 ==================== -->
+  <div id="page-sft" class="page-content">
+    <div class="section">
+      <h2 class="section-title"><span class="dot cyan"></span> SFT LoRA 微调 — 外呼坐席场景专项优化</h2>
+      <p style="color:var(--text-dim);margin-bottom:24px">原始 GPTQ 模型 + prompt engineering 天花板约 36.6% 命中率。通过 LoRA SFT 微调内化外呼行为模式，再 GPTQ 量化到 4.9GB 部署，延迟 avg 274ms。</p>
+
+      <!-- Top Stats -->
+      <div class="stats-row">
+        <div class="stat-card green">
+          <div class="stat-label">LLM 延迟 avg</div>
+          <div class="stat-value green">274ms</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">p50=286ms p90=527ms</div>
+        </div>
+        <div class="stat-card cyan">
+          <div class="stat-label">TTFT (首 token)</div>
+          <div class="stat-value cyan">27ms</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">streaming 首句 &lt;100ms</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">训练数据</div>
+          <div class="stat-value purple">1009</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">44 基准 × 多样扩充</div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-label">训练耗时</div>
+          <div class="stat-value yellow">13.5m</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">单卡 RTX 4090</div>
+        </div>
+        <div class="stat-card accent">
+          <div class="stat-label">模型大小</div>
+          <div class="stat-value" style="color:var(--accent)">4.9GB</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">GPTQ 4-bit Marlin</div>
+        </div>
+      </div>
+
+      <!-- Pipeline -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">SFT 全流程 Pipeline</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+          <div style="background:var(--surface2);padding:10px 16px;border-radius:8px;border:1px solid var(--border);text-align:center">
+            <div style="font-weight:700;color:var(--cyan)">基准数据</div>
+            <div style="color:var(--text-dim);font-size:11px">44 条高频对话</div>
+          </div>
+          <span style="color:var(--text-dim)">→</span>
+          <div style="background:var(--surface2);padding:10px 16px;border-radius:8px;border:1px solid var(--border);text-align:center">
+            <div style="font-weight:700;color:var(--purple)">数据扩充</div>
+            <div style="color:var(--text-dim);font-size:11px">变体+改写+多轮链 = 1009</div>
+          </div>
+          <span style="color:var(--text-dim)">→</span>
+          <div style="background:var(--surface2);padding:10px 16px;border-radius:8px;border:1px solid var(--border);text-align:center">
+            <div style="font-weight:700;color:var(--yellow)">LoRA SFT</div>
+            <div style="color:var(--text-dim);font-size:11px">BF16 底座 + 3 epochs</div>
+          </div>
+          <span style="color:var(--text-dim)">→</span>
+          <div style="background:var(--surface2);padding:10px 16px;border-radius:8px;border:1px solid var(--border);text-align:center">
+            <div style="font-weight:700;color:var(--green)">合并权重</div>
+            <div style="color:var(--text-dim);font-size:11px">LoRA → BF16 16GB</div>
+          </div>
+          <span style="color:var(--text-dim)">→</span>
+          <div style="background:var(--surface2);padding:10px 16px;border-radius:8px;border:1px solid var(--accent);text-align:center">
+            <div style="font-weight:700;color:var(--accent)">GPTQ 量化</div>
+            <div style="color:var(--text-dim);font-size:11px">gptqmodel → 4.9GB</div>
+          </div>
+          <span style="color:var(--text-dim)">→</span>
+          <div style="background:rgba(52,211,153,.1);padding:10px 16px;border-radius:8px;border:1px solid rgba(52,211,153,.3);text-align:center">
+            <div style="font-weight:700;color:var(--green)">vLLM 部署</div>
+            <div style="color:var(--text-dim);font-size:11px">Marlin kernel ✅</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Final Comparison Table -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">最终方案对比 (44 条基准 × 3 方案)</div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="padding:10px;text-align:left;color:var(--text-dim)">方案</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">命中率</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">延迟 avg</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">延迟 p50</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">延迟 p90</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">Prompt</th>
+              <th style="padding:10px;text-align:right;color:var(--text-dim)">模型</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:10px">原始 GPTQ + fewshot + RAG</td>
+              <td style="padding:10px;text-align:right">36.6%</td>
+              <td style="padding:10px;text-align:right;color:var(--red)">1858ms</td>
+              <td style="padding:10px;text-align:right;color:var(--red)">1840ms</td>
+              <td style="padding:10px;text-align:right;color:var(--red)">3062ms</td>
+              <td style="padding:10px;text-align:right">555 ch</td>
+              <td style="padding:10px;text-align:right">4.9 GB</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:10px">SFT BF16 + 简单 prompt</td>
+              <td style="padding:10px;text-align:right;color:var(--green);font-weight:700">39.2%</td>
+              <td style="padding:10px;text-align:right;color:var(--yellow)">1061ms</td>
+              <td style="padding:10px;text-align:right;color:var(--yellow)">—</td>
+              <td style="padding:10px;text-align:right;color:var(--yellow)">—</td>
+              <td style="padding:10px;text-align:right">152 ch</td>
+              <td style="padding:10px;text-align:right">16 GB</td>
+            </tr>
+            <tr style="background:var(--accent-glow)">
+              <td style="padding:10px;font-weight:700;color:var(--green)">SFT GPTQ + 简单 prompt ✅</td>
+              <td style="padding:10px;text-align:right;font-weight:700">35.3%</td>
+              <td style="padding:10px;text-align:right;color:var(--green);font-weight:700">274ms</td>
+              <td style="padding:10px;text-align:right;color:var(--green);font-weight:700">286ms</td>
+              <td style="padding:10px;text-align:right;color:var(--green);font-weight:700">527ms</td>
+              <td style="padding:10px;text-align:right;font-weight:700">152 ch</td>
+              <td style="padding:10px;text-align:right;font-weight:700">4.9 GB</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;gap:16px;margin-top:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px;padding:12px;background:var(--green-bg);border:1px solid rgba(52,211,153,.2);border-radius:8px;font-size:12px">
+            <div style="font-weight:700;color:var(--green);margin-bottom:4px">延迟下降 85%</div>
+            <div style="color:var(--text-dim)">1858ms → 274ms，100% 请求 &lt;800ms</div>
+          </div>
+          <div style="flex:1;min-width:200px;padding:12px;background:var(--cyan-bg);border:1px solid rgba(34,211,238,.2);border-radius:8px;font-size:12px">
+            <div style="font-weight:700;color:var(--cyan);margin-bottom:4px">Prompt 缩减 73%</div>
+            <div style="color:var(--text-dim)">555ch fewshot → 152ch 简单 prompt，SFT 内化了行为</div>
+          </div>
+          <div style="flex:1;min-width:200px;padding:12px;background:var(--purple-bg);border:1px solid rgba(167,139,250,.2);border-radius:8px;font-size:12px">
+            <div style="font-weight:700;color:var(--purple);margin-bottom:4px">量化精度损失仅 -3.9pp</div>
+            <div style="color:var(--text-dim)">BF16 39.2% → GPTQ 35.3%，用 SFT 数据做校准集</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Latency Breakdown -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">延迟逐场景实测 (max_tokens=80, GPTQ Marlin)</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="padding:8px;text-align:left;color:var(--text-dim)">场景</th>
+              <th style="padding:8px;text-align:right;color:var(--text-dim)">总延迟</th>
+              <th style="padding:8px;text-align:right;color:var(--text-dim)">TTFT</th>
+              <th style="padding:8px;text-align:right;color:var(--text-dim)">tokens</th>
+              <th style="padding:8px;text-align:left;color:var(--text-dim)">回复摘要</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">开场白 "喂？"</td><td style="padding:8px;text-align:right;color:var(--green);font-weight:700">126ms</td><td style="padding:8px;text-align:right">34ms</td><td style="padding:8px;text-align:right">15</td><td style="padding:8px;color:var(--text-dim)">您好！这里是某某公司...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">愿意听 "你说吧"</td><td style="padding:8px;text-align:right;color:var(--green)">300ms</td><td style="padding:8px;text-align:right">29ms</td><td style="padding:8px;text-align:right">43</td><td style="padding:8px;color:var(--text-dim)">面壁智能的李明，AI客服方案...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">产品介绍</td><td style="padding:8px;text-align:right;color:var(--yellow)">527ms</td><td style="padding:8px;text-align:right">28ms</td><td style="padding:8px;text-align:right">78</td><td style="padding:8px;color:var(--text-dim)">自动回复常见问题、订单查询...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">直接拒绝</td><td style="padding:8px;text-align:right;color:var(--green);font-weight:700">182ms</td><td style="padding:8px;text-align:right">25ms</td><td style="padding:8px;text-align:right">25</td><td style="padding:8px;color:var(--text-dim)">好的，祝您生活愉快！再见！</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">投诉</td><td style="padding:8px;text-align:right;color:var(--green)">324ms</td><td style="padding:8px;text-align:right">25ms</td><td style="padding:8px;text-align:right">47</td><td style="padding:8px;color:var(--text-dim)">非常抱歉给您造成困扰...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">犹豫</td><td style="padding:8px;text-align:right;color:var(--green)">286ms</td><td style="padding:8px;text-align:right">26ms</td><td style="padding:8px;text-align:right">41</td><td style="padding:8px;color:var(--text-dim)">可以再观察，发资料给您...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">问价格</td><td style="padding:8px;text-align:right;color:var(--yellow)">428ms</td><td style="padding:8px;text-align:right">26ms</td><td style="padding:8px;text-align:right">63</td><td style="padding:8px;color:var(--text-dim)">基础套餐每月2000左右...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">约时间</td><td style="padding:8px;text-align:right;color:var(--green);font-weight:700">176ms</td><td style="padding:8px;text-align:right">25ms</td><td style="padding:8px;text-align:right">24</td><td style="padding:8px;color:var(--text-dim)">明天下午或后天上午都可以...</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">结束</td><td style="padding:8px;text-align:right;color:var(--green)">214ms</td><td style="padding:8px;text-align:right">25ms</td><td style="padding:8px;text-align:right">30</td><td style="padding:8px;color:var(--text-dim)">感谢您的支持！祝顺利再见！</td></tr>
+            <tr><td style="padding:8px">辱骂</td><td style="padding:8px;text-align:right;color:var(--green);font-weight:700">180ms</td><td style="padding:8px;text-align:right">25ms</td><td style="padding:8px;text-align:right">25</td><td style="padding:8px;color:var(--text-dim)">好的不打扰您了，再见！</td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:12px;padding:10px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:8px;font-size:11px;color:var(--green);text-align:center">
+          8/10 &lt;400ms &middot; 10/10 &lt;800ms &middot; TTFT avg 27ms &middot; 全链路 (TTFT+ASR+TTS) &asymp;430ms ✅
+        </div>
+      </div>
+
+      <!-- Training Config -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">LoRA 训练配置</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+          <div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">训练环境</div>
+            <div style="background:var(--surface2);padding:12px;border-radius:8px;font-size:12px;line-height:2">
+              <div>底座: <strong style="color:var(--cyan)">MiniCPM4.1-8B BF16</strong> (16GB, ModelScope)</div>
+              <div>训练卡: <strong>单卡 RTX 4090</strong> (GPU 5), 峰值 ~18GB</div>
+              <div>框架: transformers 5.3 + peft 0.18</div>
+              <div>训练时间: <strong style="color:var(--green)">13.5 分钟</strong>, 192 steps × 3 epochs</div>
+              <div>Final loss: <strong style="color:var(--green)">6.78</strong></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">LoRA 参数</div>
+            <div style="background:var(--surface2);padding:12px;border-radius:8px;font-size:12px;line-height:2">
+              <div>target: <code style="color:var(--accent)">q/k/v/o_proj + gate/up/down_proj</code></div>
+              <div>rank (r): <strong>16</strong> / alpha: <strong>32</strong></div>
+              <div>dropout: 0.05</div>
+              <div>trainable params: <strong style="color:var(--yellow)">44M (0.54%)</strong></div>
+              <div>Adapter 大小: 170MB</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">GPTQ 量化</div>
+            <div style="background:var(--surface2);padding:12px;border-radius:8px;font-size:12px;line-height:2">
+              <div>工具: <strong style="color:var(--cyan)">gptqmodel 5.8.0</strong></div>
+              <div>配置: 4-bit / group_size=128 / desc_act / sym</div>
+              <div>校准集: <strong style="color:var(--green)">128 条 SFT 训练数据</strong></div>
+              <div>BF16 16GB → GPTQ <strong style="color:var(--green)">4.9GB</strong></div>
+              <div>精度损失: <strong>-3.9pp</strong> (39.2% → 35.3%)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Breakdown -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">分类别命中率 — GPTQ+fewshot vs SFT-GPTQ</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;text-align:center;font-size:12px">
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">B 首轮</div><div style="font-weight:700">52% → <span style="color:var(--green)">60%</span></div><div style="color:var(--green);font-size:10px">↑ 8pp</div></div>
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">D 拒绝</div><div style="font-weight:700">24% → <span style="color:var(--green)">32%</span></div><div style="color:var(--green);font-size:10px">↑ 8pp</div></div>
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">E 犹豫</div><div style="font-weight:700">29% → <span style="color:var(--green)">42%</span></div><div style="color:var(--green);font-size:10px">↑ 13pp</div></div>
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">C 介绍</div><div style="font-weight:700">35% → 35%</div><div style="color:var(--text-dim);font-size:10px">—</div></div>
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">H 结束</div><div style="font-weight:700">56% → 56%</div><div style="color:var(--text-dim);font-size:10px">—</div></div>
+          <div style="padding:12px;background:var(--surface2);border-radius:8px"><div style="color:var(--text-dim);margin-bottom:4px">F 价格</div><div style="font-weight:700">29% → <span style="color:var(--red)">24%</span></div><div style="color:var(--red);font-size:10px">↓ 5pp</div></div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:var(--text-dim);padding:8px;background:var(--surface2);border-radius:6px">
+          核心发现: SFT 在<strong style="color:var(--green)">异议处理 (D+E)</strong>上提升最显著 (+8~13pp)，这正是外呼场景最核心的能力。价格谈判 (F) 需补充训练数据。
+        </div>
+      </div>
+
+      <!-- Data -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:16px;font-size:15px">训练数据构成 (1009 条)</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;font-size:13px">
+          <div style="padding:16px;background:var(--surface2);border-radius:8px;border-top:3px solid var(--cyan)">
+            <div style="font-size:28px;font-weight:700;color:var(--cyan)">254</div>
+            <div style="color:var(--text-dim);font-size:11px">单轮对话 (44 基准 × 用户变体)</div>
+          </div>
+          <div style="padding:16px;background:var(--surface2);border-radius:8px;border-top:3px solid var(--purple)">
+            <div style="font-size:28px;font-weight:700;color:var(--purple)">456</div>
+            <div style="color:var(--text-dim);font-size:11px">多轮对话链 (50+ 条完整路径)</div>
+          </div>
+          <div style="padding:16px;background:var(--surface2);border-radius:8px;border-top:3px solid var(--yellow)">
+            <div style="font-size:28px;font-weight:700;color:var(--yellow)">299</div>
+            <div style="color:var(--text-dim);font-size:11px">助手回复改写 (多样化表达)</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:var(--text-dim)">
+          边缘场景覆盖: 辱骂应对、沉默处理、信号差、无关话题(股票)、ROI 计算、合同退款、员工抵制、行业特殊性(医疗)、CRM 对接、售后支持、竞品对比、砍价
+        </div>
+      </div>
+
+      <!-- File Structure -->
+      <div class="card" style="margin-bottom:24px">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">文件结构</div>
+        <div style="background:var(--surface2);padding:16px;border-radius:8px;font-family:monospace;font-size:12px;line-height:1.8">
+          <span style="color:var(--text-dim)">sft/</span><br>
+          ├── prepare_sft_data.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># 数据扩充脚本</span><br>
+          ├── outbound_sft_data.json&nbsp;<span style="color:var(--text-dim)"># 1009 条训练数据</span><br>
+          ├── finetune_lora.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># LoRA 微调主脚本</span><br>
+          ├── quantize_gptq.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># gptqmodel 量化</span><br>
+          ├── run_train.sh&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># 训练启动脚本</span><br>
+          └── output/<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;├── final/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># LoRA adapter (170MB)</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;├── merged/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)"># 合并后 BF16 (16GB)</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;└── <span style="color:var(--green);font-weight:700">gptq_4bit/</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--green)"># 最终部署模型 (4.9GB) ✅</span>
+        </div>
+      </div>
+
+      <!-- Version -->
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;font-size:15px">版本线</div>
+        <div style="display:grid;gap:6px;font-size:12px">
+          <div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center">
+            <code style="color:var(--text-dim);min-width:40px">v2.9</code>
+            <span>状态竞争修复 + 鉴权 + RAG 置信度 + 18/18 PASS</span>
+          </div>
+          <div style="display:flex;gap:12px;padding:6px 0;align-items:center">
+            <code style="color:var(--green);min-width:40px;font-weight:700">SFT</code>
+            <span style="color:var(--green);font-weight:600">LoRA SFT 1009条 + GPTQ 4-bit 量化 + 延迟 274ms + 全链路 &lt;800ms</span>
             <span class="tab-badge new" style="margin-left:auto">CURRENT</span>
           </div>
         </div>

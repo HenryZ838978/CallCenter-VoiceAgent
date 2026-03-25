@@ -1,4 +1,6 @@
 models/
+sft/output/
+sft/gptqmodel_offload/
 certs/
 data/*.wav
 data/rag_index*

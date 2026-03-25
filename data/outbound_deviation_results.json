@@ -1,0 +1,3212 @@
+[
+  {
+    "dialogue_id": "A01",
+    "category": "A",
+    "mode": "A_裸模型",
+    "user_input": "喂？",
+    "expected": "您好，请问是张先生吗？我这边是面壁智能的李明，之前您在我们官网留过咨询信息，今天打给您简单聊几句，方便吗？",
+    "actual": "您好！感谢您拨通我们的电话。我们是[您的公司名称/产品服务相关信息]。请问您需要了解关于哪方面的信息呢？",
+    "length_ratio": 0.981,
+    "key_elements": [
+      [
+        "确认身份",
+        true
+      ],
+      [
+        "自报家门",
+        false
+      ],
+      [
+        "说明来电原因",
+        true
+      ],
+      [
+        "征求同意",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇大论",
+        false
+      ],
+      [
+        "直接推销",
+        false
+      ],
+      [
+        "不说明来意",
+        false
+      ],
+      [
+        "用\"您好有什么可以帮您\"这种客服被动话术",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 867.0
+  },
+  {
+    "dialogue_id": "A02",
+    "category": "A",
+    "mode": "A_裸模型",
+    "user_input": "谁啊？",
+    "expected": "您好张先生，我是面壁智能的李明。之前看到您关注了我们的AI客服产品，想跟您简单聊两句，花您一分钟时间可以吗？",
+    "actual": "您好！请问是询问关于我们公司或我们的产品吗？如果您方便的话，我想向您介绍一些有关我们最新服务的信息。您看这样可以吗？",
+    "length_ratio": 1.074,
+    "key_elements": [
+      [
+        "不慌不忙",
+        false
+      ],
+      [
+        "简洁自报",
+        false
+      ],
+      [
+        "说明目的",
+        false
+      ],
+      [
+        "给出时间预期",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "慌张",
+        false
+      ],
+      [
+        "过于正式",
+        false
+      ],
+      [
+        "不说来意",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 946.5
+  },
+  {
+    "dialogue_id": "B01",
+    "category": "B",
+    "mode": "A_裸模型",
+    "user_input": "我不认识你们公司啊，你怎么有我电话的？",
+    "expected": "理解您的顾虑。是这样的，您之前在网上浏览过AI客服相关的内容，我们这边收到了平台推送的咨询信息。如果确实不需要的话我就不打扰了，不过我们的智能客服方案确实帮不少企业降了成本，要不我简单说两句？",
+    "actual": "[回应策略：专业道歉+隐私声明+主动提供帮助]\n尊敬的客户，非常抱歉给您带来困扰。确实是我们这边在信息收集上出现了问题，您的个人数据不应该被用于未经您同意的销售用途。我们已经立即对内部流程进行了检查和调整，确保此类事件不再发生。关于您的来电，我们理解这可能让您感到不适，但请放心，我们的服务宗旨始终是以客户体验为核心，绝不会在没有得到您明确授权的情况下进行联系。如果您有任何需求或疑问，我们将非常乐意为您提供协助。再次为我们的失误向您致以诚挚的歉意。\n\n[行动计划：更新客户数据库、加强员工培训、提供补偿选项]\n我们正在采取紧急措施来更新我们的客户数据库，移除所有未经过客户同意的联系方式，并对相关人员进行更严格的隐私保护培训。同时，我们也准备好根据您的意愿，提供一些补偿方案，比如暂停服务或提供其他形式的优惠，以弥补此次不当",
+    "length_ratio": 3.781,
+    "key_elements": [
+      [
+        "先共情",
+        true
+      ],
+      [
+        "合理解释来源",
+        false
+      ],
+      [
+        "给退出选项",
+        false
+      ],
+      [
+        "轻度hook",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "强行推销",
+        false
+      ],
+      [
+        "说不清来源",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 5407.2
+  },
+  {
+    "dialogue_id": "B02",
+    "category": "B",
+    "mode": "A_裸模型",
+    "user_input": "我现在在忙，没时间",
+    "expected": "好的好的，不好意思打扰了。那我加一下您微信，回头发份资料给您看看？或者您方便的时间我再打过来？",
+    "actual": "理解您的状况。如果您现在确实没有空闲时间,我们可以稍后再联系您。非常感谢您的理解和支持。我会尽快安排其他合适的时间与您取得联系。祝您工作顺利,生活愉快!",
+    "length_ratio": 1.617,
+    "key_elements": [
+      [
+        "立即尊重",
+        false
+      ],
+      [
+        "提供替代方案",
+        false
+      ],
+      [
+        "留下触点",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续纠缠",
+        false
+      ],
+      [
+        "说'就耽误您一分钟'",
+        false
+      ],
+      [
+        "挂断不留后手",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1210.0
+  },
+  {
+    "dialogue_id": "B03",
+    "category": "B",
+    "mode": "A_裸模型",
+    "user_input": "你说吧，什么事？",
+    "expected": "是这样的，我们面壁智能做了一套AI智能客服系统，能帮企业把客服成本降下来60%左右。您这边现在客服团队大概多少人呀？",
+    "actual": "好的！既然您愿意听取我的建议，那我就来跟您分享一件最近让我很受启发的小事。\n\n---\n\n### 📍 事件背景  \n前段时间，我在整理自己的日常任务时发现了一个有趣的现象：我经常会把一些“小事情”忽略掉，比如回复一封邮件、完成一个小项目的一部分等等。但慢慢地我发现，这些看似不重要的事情，却在积累中影响了我的效率和心情。\n\n---\n\n### 💡 我的思考与行动  \n于是我决定改变策略，尝试做一个简单的实验：**每天只做三件事最重要的事**。哪怕其他事情延后或者跳过，也要确保这三件事完成。刚开始的时候我也怀疑自己能不能坚持下来，后来我才明白，真正的掌控感，其实就来源于这种有意识的安排。\n\n结果呢？不仅工作效率变高了，而且我也学会了更懂得拒绝那些干扰性的事情。更重要的是，我开始体会到一种“轻",
+    "length_ratio": 5.966,
+    "key_elements": [
+      [
+        "简洁说重点",
+        true
+      ],
+      [
+        "给出具体数字吸引注意",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "讲一大段公司介绍",
+        false
+      ],
+      [
+        "不问客户情况",
+        false
+      ],
+      [
+        "只说功能不说价值",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 5388.1
+  },
+  {
+    "dialogue_id": "C01",
+    "category": "C",
+    "mode": "A_裸模型",
+    "user_input": "AI客服？具体能做什么呀？",
+    "expected": "简单说就是用AI来接打电话。比如您公司的售后热线、回访电话这些，AI可以直接跟客户对话，听得懂也答得上来，跟真人差不多。而且7x24小时不休息，一个AI坐席能顶五六个人工。",
+    "actual": "您好！我们是一款专注于提供高质量、安全可靠的产品和服务的AI助手。我们的目标是帮助您解决生活中的各种问题，提升您的生活质量和工作效率。无论是信息查询、购物建议还是技术支持，我们都能够为您提供详尽的解答和实用的解决方案。如果您有任何疑问或需要进一步的信息，请随时告诉我，我会竭诚为您服务。谢谢！",
+    "length_ratio": 1.698,
+    "key_elements": [
+      [
+        "通俗易懂",
+        true
+      ],
+      [
+        "具体场景举例",
+        false
+      ],
+      [
+        "突出核心价值",
+        true
+      ],
+      [
+        "量化对比",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'大模型'、'端侧部署'等技术术语",
+        false
+      ],
+      [
+        "像念PPT",
+        false
+      ],
+      [
+        "只说功能不举场景",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1949.9
+  },
+  {
+    "dialogue_id": "C02",
+    "category": "C",
+    "mode": "A_裸模型",
+    "user_input": "AI能有真人那么灵活吗？客户问的问题五花八门的",
+    "expected": "这个您放心，我们用的是大模型技术，不是以前那种按关键词匹配的机器人。客户怎么问都能理解，而且可以根据您公司的业务知识训练，回答的内容完全按您的标准来。实在遇到搞不定的，会自动转人工。",
+    "actual": "我理解您的疑问,让我来解释一下:\n\n1. AI的局限性:\n   - 确实无法像真人那样完全随机思考或处理问题。\n   - 对复杂、突发的提问可能缺乏应对能力。\n\n2. 我们的解决方案:\n   - 我们有专门的客服团队来处理这些情况。\n   - 当遇到无法回答的问题时,我们会引导用户到真人客服那里。\n\n3. 为什么需要真人:\n   - 某些专业性很强的问题可能超出AI的能力范围。\n   - 对于情感交流或个性化建议,真人更有优势。\n\n4. 如何平衡:\n   - 在日常使用中,让AI承担大部分工作。\n   - 遇到复杂或紧急问题时,及时联系真人客服。\n\n总的来说,虽然AI目前还不能完全替代人类,但通过合理的分工和使用方式,我们能够充分利用两者的优势。如果您有任何具体的问题,我很乐意继续为您",
+    "length_ratio": 3.813,
+    "key_elements": [
+      [
+        "消除'机器人'偏见",
+        false
+      ],
+      [
+        "对比旧技术差异",
+        false
+      ],
+      [
+        "强调可定制",
+        false
+      ],
+      [
+        "兜底方案",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "承诺100%替代人工",
+        false
+      ],
+      [
+        "回避AI的局限性",
+        false
+      ],
+      [
+        "用技术黑话解释",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 5423.5
+  },
+  {
+    "dialogue_id": "C03",
+    "category": "C",
+    "mode": "A_裸模型",
+    "user_input": "你们这个有哪些公司在用？",
+    "expected": "我们跟吉利、大众这些车企合作了智能座舱的语音助手，金融、电商行业也有不少客户在用我们的智能客服方案。跟您业务类似的，最近有一家电商客户上线之后，人工客服成本直接减了一半。",
+    "actual": "目前没有公开信息表明具体有哪几家公司在使用我们的产品或服务。如果您需要了解特定行业的客户案例或合作情况,建议您直接联系我们获取更多信息。我们会根据实际情况提供相关说明和解答。请问还有其他需要我帮助的吗?",
+    "length_ratio": 1.188,
+    "key_elements": [
+      [
+        "有名企背书",
+        false
+      ],
+      [
+        "说同行案例",
+        false
+      ],
+      [
+        "给可量化的效果",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'很多公司在用'没细节",
+        false
+      ],
+      [
+        "编造案例",
+        false
+      ],
+      [
+        "只报名不说效果",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1423.1
+  },
+  {
+    "dialogue_id": "D01",
+    "category": "D",
+    "mode": "A_裸模型",
+    "user_input": "不需要，我们有客服团队了",
+    "expected": "明白明白，有自己团队肯定更放心。其实很多客户也不是替换人工，而是让AI处理那些重复性高的咨询，比如查订单、问营业时间这种，把人工腾出来做更有价值的事。不过既然您暂时不需要，我就不多打扰了，后面有需要随时找我。",
+    "actual": "好的,我理解您目前已经有了合作的客服团队。既然如此,我就不再打扰您了。我会尊重您的决定,不会继续联系您。感谢您的理解,祝您一切顺利!",
+    "length_ratio": 0.635,
+    "key_elements": [
+      [
+        "先认同",
+        true
+      ],
+      [
+        "转换框架(不是替代而是辅助)",
+        false
+      ],
+      [
+        "不纠缠但埋种子",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "'您先听我说完'",
+        false
+      ],
+      [
+        "反驳客户",
+        false
+      ],
+      [
+        "不给台阶直接挂断",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1131.2
+  },
+  {
+    "dialogue_id": "D02",
+    "category": "D",
+    "mode": "A_裸模型",
+    "user_input": "不感兴趣，别打了",
+    "expected": "好的，不好意思打扰您了。那我就不多说了，后续如果您有AI客服方面的需求，可以搜面壁智能找到我们。祝您工作顺利，再见！",
+    "actual": "您好！理解您目前没有兴趣参与相关活动。我们尊重每个人的选择和意愿，如果您有其他需要或问题，请随时告诉我，我会尽力提供帮助。谢谢您的理解和支持！",
+    "length_ratio": 1.224,
+    "key_elements": [
+      [
+        "立即退出",
+        false
+      ],
+      [
+        "不纠缠",
+        false
+      ],
+      [
+        "留品牌记忆",
+        false
+      ],
+      [
+        "礼貌收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续推销",
+        false
+      ],
+      [
+        "追问'为什么不感兴趣'",
+        false
+      ],
+      [
+        "态度转冷",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1080.8
+  },
+  {
+    "dialogue_id": "D03",
+    "category": "D",
+    "mode": "A_裸模型",
+    "user_input": "你们这是骚扰电话吧？我要投诉",
+    "expected": "非常抱歉给您带来了困扰，确实不好意思。我这边把您的号码备注一下，后续不会再打扰您了。如果给您造成了不好的体验，真的很抱歉。祝您生活愉快，再见。",
+    "actual": "您好！非常理解您的感受，我们绝不会发送任何可能打扰您或被认为是骚扰的信息。\n\n关于您提出的疑问，请您放心：\n\n1.  **绝对不会被骚扰：** 我们从未、也不会发送任何带有推销、诈骗或无关信息的电话。我们的所有沟通都以为您提供服务、解决问题为前提。\n2.  **无权进行骚扰投诉：** 我的身份是一名AI助手，我无法接听电话、销售产品，也没有任何权力对您进行“骚扰”行为。我的存在就是为了提供帮助和信息。\n\n**为了更好地解释和消除您的疑虑，请您再看以下几点：**\n\n*   **我们的唯一目的是为您提供帮助：** 我们的电话只用于确认您的身份，并协助您解决相关问题。\n*   **通话内容保密：** 您的个人资料和通话内容都会严格保密，绝不泄露。\n*   **无任何推销内容：** 在此通话中，",
+    "length_ratio": 4.901,
+    "key_elements": [
+      [
+        "诚恳道歉",
+        false
+      ],
+      [
+        "承诺不再打扰",
+        false
+      ],
+      [
+        "快速结束",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "辩解",
+        false
+      ],
+      [
+        "说'这不是骚扰'",
+        false
+      ],
+      [
+        "纠缠",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 5412.5
+  },
+  {
+    "dialogue_id": "E01",
+    "category": "E",
+    "mode": "A_裸模型",
+    "user_input": "听起来还行，但我得考虑考虑",
+    "expected": "没问题，这个确实需要考虑。这样吧，我先给您发一份我们的案例资料和报价方案，您空了看看，有问题随时问我。方便加个微信吗？",
+    "actual": "以下是一些适合在这种情况下使用的回应句式:\n\n1. \"好的,我理解您需要时间来仔细考虑。您可以随时告诉我您的想法和疑虑,我会尽力解答和帮助您做出决定。\"\n\n2. \"没问题,我们随时欢迎您过来查看或咨询。如果您有任何问题,都可以随时联系我,我会尽快给您回复。\"\n\n3. \"明白了,您可以慢慢思考。如果有任何需要讨论的地方,随时告诉我,我们会继续保持沟通。\"\n\n4. \"好的,我会一直在这里等待您的消息。无论何时您准备好,我们都会全力以赴为您提供最好的服务。\"\n\n总之,关键是保持耐心、理解和配合的态度,让对方感到放心和信任。",
+    "length_ratio": 4.424,
+    "key_elements": [
+      [
+        "不施压",
+        true
+      ],
+      [
+        "提供下一步动作",
+        false
+      ],
+      [
+        "索取联系方式",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "催促决定",
+        false
+      ],
+      [
+        "说'现在有优惠'制造紧迫感",
+        false
+      ],
+      [
+        "放弃不跟进",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 4072.2
+  },
+  {
+    "dialogue_id": "E02",
+    "category": "E",
+    "mode": "A_裸模型",
+    "user_input": "这个我做不了主，得跟我们领导说一下",
+    "expected": "理解理解，这种事确实得领导拍板。那您看我准备一份方案概要发给您，您方便转给领导看看？或者我也可以直接跟您领导聊聊，给他做个简单的演示。",
+    "actual": "以下是一些可以用来回应“这个我做不了主，得跟我们领导说一下”的句子：\n\n1. 我理解，需要跟领导沟通后再作决定。\n2. 这确实是一个重要的决定，我会将情况反馈给相关负责人。\n3. 是的，我们需要进一步讨论才能做出最终决定。\n4. 这是个合理的请求，我会确保与我们的主管进行协调。\n5. 我明白，这需要更多的信息和讨论来确定最佳方案。\n6. 这是一个复杂的问题，我会在内部寻求一致意见后再回复你。\n7. 我完全同意，我们需要确保所有决策都经过适当的审批流程。\n8. 这个话题需要更多的时间来评估和考虑，我会尽快给你答复。\n9. 这看起来是一个重要的事项，我会与其他负责人协商后再作出回应。\n10. 我明白了，我会将你的需求传达给我们的上级，并尽快给予反馈。\n\n这些回答可以帮助你在无法立即做出决定的",
+    "length_ratio": 5.194,
+    "key_elements": [
+      [
+        "尊重决策流程",
+        false
+      ],
+      [
+        "降低客户工作量",
+        false
+      ],
+      [
+        "尝试接触决策者",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您自己就能决定'",
+        false
+      ],
+      [
+        "不提供帮助材料",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 5402.9
+  },
+  {
+    "dialogue_id": "E03",
+    "category": "E",
+    "mode": "A_裸模型",
+    "user_input": "AI客服效果真有那么好吗？我怕上了之后客户体验反而差了",
+    "expected": "您这个担心特别正常，很多客户一开始都有这个顾虑。我们可以先做个小范围试用，比如先让AI处理夜间电话或者简单咨询，您观察一两周效果再决定要不要扩大。而且全程您都能监控AI的对话记录，不满意随时调整。",
+    "actual": "您好！理解您的担忧，确保用户体验是我们的首要任务。我们致力于提供高效且友好的服务，任何系统升级都会经过严格测试，以确保不会影响客户体验。如果您有任何疑虑或需要进一步的信息，请随时告知。我们的目标是让您感到安心和满意。感谢您的信任和支持！",
+    "length_ratio": 1.204,
+    "key_elements": [
+      [
+        "认同顾虑",
+        true
+      ],
+      [
+        "提出低风险试用方案",
+        true
+      ],
+      [
+        "强调可控性",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "空口打保票",
+        false
+      ],
+      [
+        "说'绝对没问题'",
+        false
+      ],
+      [
+        "不提供试用",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1746.9
+  },
+  {
+    "dialogue_id": "F01",
+    "category": "F",
+    "mode": "A_裸模型",
+    "user_input": "这个要多少钱？",
+    "expected": "费用跟您的坐席数量和通话量有关。一般来说，AI坐席的成本大概是人工的三分之一到五分之一。您这边大概每天多少通电话？我帮您估算一下。",
+    "actual": "您好！请问您想了解哪款产品或服务的价格呢？我可以为您提供详细的报价信息。",
+    "length_ratio": 0.554,
+    "key_elements": [
+      [
+        "不直接报价(先了解需求)",
+        false
+      ],
+      [
+        "给出范围锚定",
+        false
+      ],
+      [
+        "反问引导",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接报一个数字",
+        false
+      ],
+      [
+        "说'很便宜'",
+        false
+      ],
+      [
+        "回避价格话题",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 593.8
+  },
+  {
+    "dialogue_id": "F02",
+    "category": "F",
+    "mode": "A_裸模型",
+    "user_input": "太贵了，我们用不起",
+    "expected": "理解，成本确实是大家最关心的。不过您可以这么算，一个人工坐席一个月工资加五险一金怎么也得七八千，我们一个AI坐席一个月才一两千，而且没有培训成本、不请假不离职。用了之后整体算下来肯定是省钱的。",
+    "actual": "我完全理解您的顾虑，毕竟每一笔投入都需要慎重考虑。不过，我想强调的是，我们的服务不仅仅是一个简单的交易，而是一种长期的投资，一种能够为您带来稳定回报的策略。就像您种下的树苗，虽然初期需要投入时间和精力，但随着时间的推移，它会逐渐成长为一棵参天大树，为您提供持续的阴凉和果实。我们的服务正是这样一棵“树”，它会随着时间的推移，为您的业务发展提供源源不断的支持和价值，帮助您在激烈的市场竞争中稳步前行，最终实现更大的成功。所以，与其说这是一个价格问题，不如说是一个关于长期收益和潜在价值的考量。您觉得呢？",
+    "length_ratio": 2.604,
+    "key_elements": [
+      [
+        "TCO对比计算",
+        false
+      ],
+      [
+        "具体数字对比",
+        false
+      ],
+      [
+        "从成本变为投资视角",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接打折",
+        false
+      ],
+      [
+        "说'一分价钱一分货'",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 3987.3
+  },
+  {
+    "dialogue_id": "F03",
+    "category": "F",
+    "mode": "A_裸模型",
+    "user_input": "能不能先免费试试？",
+    "expected": "可以的，我们有免费的测试额度，您可以先体验一下效果。我帮您开通一个试用账号，一般一到两周就能看到效果了。您方便的话，留个邮箱我把试用链接发给您？",
+    "actual": "当然可以！我们提供完全免费的试用服务，让您在没有任何压力的情况下体验我们的产品或服务。您只需要花几分钟时间注册或登录，就可以开始享受我们的所有功能了。如果有任何问题或者需要帮助，我们的客服团队随时都在这里为您服务。快来试试吧，期待您的使用体验！",
+    "length_ratio": 1.694,
+    "key_elements": [
+      [
+        "肯定回答",
+        false
+      ],
+      [
+        "说明试用流程",
+        false
+      ],
+      [
+        "索取信息推进",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说没有免费试用",
+        false
+      ],
+      [
+        "设置复杂门槛",
+        false
+      ],
+      [
+        "不索取联系方式",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1741.2
+  },
+  {
+    "dialogue_id": "G01",
+    "category": "G",
+    "mode": "A_裸模型",
+    "user_input": "行，那你约个时间给我详细讲讲",
+    "expected": "太好了！您看这周三还是周四方便？下午两三点的时间可以吗？我们可以线上演示一下，大概半小时就能讲清楚。",
+    "actual": "好的！请您告诉我您方便的时间段或者希望我们通过哪种方式沟通（例如电话、视频会议等）。我会尽快安排好并通知您。谢谢您的耐心等待！",
+    "length_ratio": 1.26,
+    "key_elements": [
+      [
+        "二选一提问法",
+        true
+      ],
+      [
+        "给出具体时间选项",
+        false
+      ],
+      [
+        "说明形式和时长",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您什么时候方便都行'",
+        false
+      ],
+      [
+        "不确认具体时间",
+        false
+      ],
+      [
+        "安排太复杂",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1048.0
+  },
+  {
+    "dialogue_id": "G02",
+    "category": "G",
+    "mode": "A_裸模型",
+    "user_input": "这两天不行，你下周再打给我吧",
+    "expected": "好的，那我下周一上午给您打过来，可以吗？到时候我提前给您发个短信确认一下。",
+    "actual": "好的,非常感谢您的理解。我会在下周一重新联系您,看看是否能找到一个合适的时间进行沟通。再次感谢您的配合,祝您生活愉快!",
+    "length_ratio": 1.595,
+    "key_elements": [
+      [
+        "确认具体时间",
+        true
+      ],
+      [
+        "预告短信提醒",
+        false
+      ],
+      [
+        "不模糊约定",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'好的下周联系'不具体",
+        false
+      ],
+      [
+        "不确认时间",
+        false
+      ],
+      [
+        "忘记约定",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 946.8
+  },
+  {
+    "dialogue_id": "H01",
+    "category": "H",
+    "mode": "A_裸模型",
+    "user_input": "好的，那就这样吧",
+    "expected": "好的张先生，那我先把资料发给您，有什么问题随时联系我。祝您工作顺利，再见！",
+    "actual": "您好！请问有什么可以帮助您的吗？",
+    "length_ratio": 0.432,
+    "key_elements": [
+      [
+        "确认后续动作",
+        false
+      ],
+      [
+        "留联系方式",
+        false
+      ],
+      [
+        "礼貌告别",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接'再见'",
+        false
+      ],
+      [
+        "忘记确认后续",
+        false
+      ],
+      [
+        "语气冷淡",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 274.2
+  },
+  {
+    "dialogue_id": "H02",
+    "category": "H",
+    "mode": "A_裸模型",
+    "user_input": "谢谢你的介绍，挺详细的",
+    "expected": "不客气！能帮到您就好。那我先把方案和案例发到您邮箱，您有任何问题随时打我电话。祝您今天顺利，再见！",
+    "actual": "您太客气了！能帮到您我很高兴。如果以后还有任何问题或需要更多帮助，随时告诉我。祝您一切顺利！",
+    "length_ratio": 0.939,
+    "key_elements": [
+      [
+        "回应感谢",
+        false
+      ],
+      [
+        "明确下一步",
+        false
+      ],
+      [
+        "温暖收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'不客气再见'",
+        false
+      ],
+      [
+        "不说下一步",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 889.1
+  },
+  {
+    "dialogue_id": "B04",
+    "category": "B",
+    "mode": "A_裸模型",
+    "user_input": "干嘛的？",
+    "expected": "是这样，我们是做AI智能客服的，能帮企业省客服成本。您这边有客服团队吧？现在招人难不难？",
+    "actual": "“我干什么的？”\n\n这句话通常用于询问某人的职业或工作内容。如果你需要更具体的回答，请提供更多上下文信息。",
+    "length_ratio": 1.205,
+    "key_elements": [
+      [
+        "极简自我介绍",
+        false
+      ],
+      [
+        "快速切入痛点",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇介绍公司",
+        false
+      ],
+      [
+        "念产品说明书",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 913.2
+  },
+  {
+    "dialogue_id": "D04",
+    "category": "D",
+    "mode": "A_裸模型",
+    "user_input": "我们已经在用xxx的客服系统了",
+    "expected": "哦，那挺好的，说明您很重视客服这块。不过现在AI技术迭代很快，您有没有感觉现有系统有什么不太满意的地方？比如复杂问题回答不好，或者不够灵活？如果有的话，我们可以帮您做个对比评估。",
+    "actual": "明白了，感谢您分享现有系统的使用情况。我们可以通过以下方式来了解您的需求和偏好：\n1. **询问主要功能**：请描述您目前使用的系统中哪些功能最能满足您的需求？是否有任何不足之处或需要改进的地方？\n2. **对比功能**：与您现有的系统相比，我们的系统在哪些方面可能提供更好的解决方案？比如更高效的处理速度、更友好的用户界面等。\n3. **定制化服务**：如果您有特定的业务流程或特殊要求，我们可以根据这些需求进行定制开发，以确保系统完全符合您的期望。\n4. **试用体验**：如果方便的话，我们可以安排一次试用，让您亲自体验一下我们的系统在实际操作中的表现。\n请告诉我您的想法或任何具体的问题，我会尽力帮助您找到最适合的解决方案。",
+    "length_ratio": 3.551,
+    "key_elements": [
+      [
+        "先肯定客户选择",
+        false
+      ],
+      [
+        "挖掘痛点",
+        false
+      ],
+      [
+        "提供对比方案",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "贬低竞品",
+        false
+      ],
+      [
+        "说'我们比他们好多了'",
+        false
+      ],
+      [
+        "直接放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 4621.5
+  },
+  {
+    "dialogue_id": "C04",
+    "category": "C",
+    "mode": "A_裸模型",
+    "user_input": "我们客户很多说方言的，你们这个能听懂吗？",
+    "expected": "这个问题问得好。我们的语音识别支持普通话、粤语、英语这些主流语言，方言这块确实是个挑战。目前可以做的是：如果AI识别不太清楚，会自动转给人工坐席处理，不会让客户体验受影响。后续我们也在做方言的优化。",
+    "actual": "您好！关于您的问题，我理解您的担忧。为了更好地服务我们的客户群体，特别是那些使用方言的客户，我们需要采取以下措施：\n\n1. **优化语音识别系统**：我们将对现有的语音识别技术进行升级，使其能够更准确地识别和理解各种方言。这包括增加方言训练数据集，提高模型在方言环境下的识别精度。\n\n2. **增强多语言支持**：除了方言，我们还将加强对外语的支持，确保我们的服务能够覆盖更多的国际用户。\n\n3. **提供定制化服务**：对于特定的方言或外语需求，我们可以提供定制化的解决方案，例如开发专门的方言识别模块或提供人工转录服务。\n\n4. **持续改进**：我们会定期收集用户的反馈，并根据实际情况调整和优化我们的服务，以满足不同地区、不同语言背景用户的需求。\n\n如果您有具体的方言类型需要支持，或者有其他特殊要求，请告知我们，我们将尽力",
+    "length_ratio": 3.697,
+    "key_elements": [
+      [
+        "诚实回答",
+        false
+      ],
+      [
+        "不夸大能力",
+        false
+      ],
+      [
+        "给出解决方案",
+        false
+      ],
+      [
+        "展望未来",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'什么方言都能听懂'",
+        false
+      ],
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "过度承诺",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 5388.8
+  },
+  {
+    "dialogue_id": "E04",
+    "category": "E",
+    "mode": "A_裸模型",
+    "user_input": "上线周期长不长？我们等不了太久",
+    "expected": "理解，业务不能等。一般标准接入的话，一两周就能跑起来。如果您有特殊的业务知识要训练，最多加一周。我们先做个轻量上线，边用边优化，不会影响您现有的业务。",
+    "actual": "客户提问:上线周期长不长？我们等不了太久。\n\n回应策略:\n1. 表示理解客户的迫切需求,表示会尽最大努力缩短上线时间。\n2. 解释当前项目的复杂性和所需的工作量,说明需要一定的时间进行开发和测试以确保产品质量。\n3. 提供具体的时间表或里程碑,让客户了解项目进度,并承诺一旦有新的进展及时告知客户。\n4. 如果可能的话,建议客户选择标准套餐或其他快速上线的解决方案,以满足紧急需求。\n5. 表达对客户的感谢和对合作的期待,希望能够在保证质量的前提下尽快完成项目。\n\n通过以上回应策略,可以有效地安抚客户的情绪,同时传达出公司对项目质量和客户满意度的重视。重要的是要保持沟通的透明度和诚信,以便建立长期的合作关系。",
+    "length_ratio": 4.08,
+    "key_elements": [
+      [
+        "给出具体时间",
+        false
+      ],
+      [
+        "分阶段方案",
+        false
+      ],
+      [
+        "强调不影响现有业务",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'很快'但不给时间",
+        false
+      ],
+      [
+        "承诺不切实际的速度",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": true,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 4747.4
+  },
+  {
+    "dialogue_id": "A01",
+    "category": "A",
+    "mode": "B_system_prompt",
+    "user_input": "喂？",
+    "expected": "您好，请问是张先生吗？我这边是面壁智能的李明，之前您在我们官网留过咨询信息，今天打给您简单聊几句，方便吗？",
+    "actual": "您好！这里是面壁智能，请问您方便占用一分钟时间了解一下我们的AI客服产品吗？",
+    "length_ratio": 0.717,
+    "key_elements": [
+      [
+        "确认身份",
+        true
+      ],
+      [
+        "自报家门",
+        true
+      ],
+      [
+        "说明来电原因",
+        true
+      ],
+      [
+        "征求同意",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇大论",
+        false
+      ],
+      [
+        "直接推销",
+        false
+      ],
+      [
+        "不说明来意",
+        false
+      ],
+      [
+        "用\"您好有什么可以帮您\"这种客服被动话术",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 631.3
+  },
+  {
+    "dialogue_id": "A02",
+    "category": "A",
+    "mode": "B_system_prompt",
+    "user_input": "谁啊？",
+    "expected": "您好张先生，我是面壁智能的李明。之前看到您关注了我们的AI客服产品，想跟您简单聊两句，花您一分钟时间可以吗？",
+    "actual": "您好！这里是面壁智能的客服团队，我们是在做关于AI客服产品的用户调研，耽误您一分钟可以吗？",
+    "length_ratio": 0.833,
+    "key_elements": [
+      [
+        "不慌不忙",
+        false
+      ],
+      [
+        "简洁自报",
+        false
+      ],
+      [
+        "说明目的",
+        false
+      ],
+      [
+        "给出时间预期",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "慌张",
+        false
+      ],
+      [
+        "过于正式",
+        false
+      ],
+      [
+        "不说来意",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 791.8
+  },
+  {
+    "dialogue_id": "B01",
+    "category": "B",
+    "mode": "B_system_prompt",
+    "user_input": "我不认识你们公司啊，你怎么有我电话的？",
+    "expected": "理解您的顾虑。是这样的，您之前在网上浏览过AI客服相关的内容，我们这边收到了平台推送的咨询信息。如果确实不需要的话我就不打扰了，不过我们的智能客服方案确实帮不少企业降了成本，要不我简单说两句？",
+    "actual": "好的，没问题。为了保护您的隐私，我们不会透露客户名单的具体来源。如果您有其他问题或者需要帮助，随时告诉我哦。",
+    "length_ratio": 0.562,
+    "key_elements": [
+      [
+        "先共情",
+        false
+      ],
+      [
+        "合理解释来源",
+        false
+      ],
+      [
+        "给退出选项",
+        false
+      ],
+      [
+        "轻度hook",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "强行推销",
+        false
+      ],
+      [
+        "说不清来源",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 819.0
+  },
+  {
+    "dialogue_id": "B02",
+    "category": "B",
+    "mode": "B_system_prompt",
+    "user_input": "我现在在忙，没时间",
+    "expected": "好的好的，不好意思打扰了。那我加一下您微信，回头发份资料给您看看？或者您方便的时间我再打过来？",
+    "actual": "好的，我理解您现在比较忙。那您看什么时候方便我们再联系呢？我们可以等您有空的时候再聊。",
+    "length_ratio": 0.915,
+    "key_elements": [
+      [
+        "立即尊重",
+        true
+      ],
+      [
+        "提供替代方案",
+        false
+      ],
+      [
+        "留下触点",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续纠缠",
+        false
+      ],
+      [
+        "说'就耽误您一分钟'",
+        false
+      ],
+      [
+        "挂断不留后手",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 792.5
+  },
+  {
+    "dialogue_id": "B03",
+    "category": "B",
+    "mode": "B_system_prompt",
+    "user_input": "你说吧，什么事？",
+    "expected": "是这样的，我们面壁智能做了一套AI智能客服系统，能帮企业把客服成本降下来60%左右。您这边现在客服团队大概多少人呀？",
+    "actual": "好的，那我就简单给您介绍一下我们这款AI智能客服系统能帮您做什么。首先，它能7*24小时在线为您解答各种问题，不管是业务咨询还是技术支持，都能快速响应。其次，它能自动分类和处理大量工单，大大提升您的工作效率。最重要的是，它能通过不断学习优化服务流程，帮助您的企业不断提升客户满意度。这是不是您现在最需要的呢？",
+    "length_ratio": 2.655,
+    "key_elements": [
+      [
+        "简洁说重点",
+        true
+      ],
+      [
+        "给出具体数字吸引注意",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "讲一大段公司介绍",
+        false
+      ],
+      [
+        "不问客户情况",
+        false
+      ],
+      [
+        "只说功能不说价值",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 2359.0
+  },
+  {
+    "dialogue_id": "C01",
+    "category": "C",
+    "mode": "B_system_prompt",
+    "user_input": "AI客服？具体能做什么呀？",
+    "expected": "简单说就是用AI来接打电话。比如您公司的售后热线、回访电话这些，AI可以直接跟客户对话，听得懂也答得上来，跟真人差不多。而且7x24小时不休息，一个AI坐席能顶五六个人工。",
+    "actual": "好的！我们的AI客服可以帮你处理很多日常事务哦。比如，它可以帮你快速回复一些常见问题，或者帮你安排日程和提醒重要事项。你平时需要哪些帮助呢？我们可以根据你的需求来定制服务。",
+    "length_ratio": 1.0,
+    "key_elements": [
+      [
+        "通俗易懂",
+        true
+      ],
+      [
+        "具体场景举例",
+        true
+      ],
+      [
+        "突出核心价值",
+        false
+      ],
+      [
+        "量化对比",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'大模型'、'端侧部署'等技术术语",
+        false
+      ],
+      [
+        "像念PPT",
+        false
+      ],
+      [
+        "只说功能不举场景",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1357.4
+  },
+  {
+    "dialogue_id": "C02",
+    "category": "C",
+    "mode": "B_system_prompt",
+    "user_input": "AI能有真人那么灵活吗？客户问的问题五花八门的",
+    "expected": "这个您放心，我们用的是大模型技术，不是以前那种按关键词匹配的机器人。客户怎么问都能理解，而且可以根据您公司的业务知识训练，回答的内容完全按您的标准来。实在遇到搞不定的，会自动转人工。",
+    "actual": "这个问题问得很好！确实，我们的AI虽然能处理很多常见问题，但对于一些特别复杂或者个性化的问题，可能还是需要人工的支持来更好地理解和回应客户的需求。你觉得呢？",
+    "length_ratio": 0.857,
+    "key_elements": [
+      [
+        "消除'机器人'偏见",
+        false
+      ],
+      [
+        "对比旧技术差异",
+        false
+      ],
+      [
+        "强调可定制",
+        false
+      ],
+      [
+        "兜底方案",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "承诺100%替代人工",
+        false
+      ],
+      [
+        "回避AI的局限性",
+        false
+      ],
+      [
+        "用技术黑话解释",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1116.7
+  },
+  {
+    "dialogue_id": "C03",
+    "category": "C",
+    "mode": "B_system_prompt",
+    "user_input": "你们这个有哪些公司在用？",
+    "expected": "我们跟吉利、大众这些车企合作了智能座舱的语音助手，金融、电商行业也有不少客户在用我们的智能客服方案。跟您业务类似的，最近有一家电商客户上线之后，人工客服成本直接减了一半。",
+    "actual": "您好！确实有多个知名企业在用我们的AI解决方案，比如金融行业的XX银行、制造领域的YY集团，他们的实际案例证明我们产品的效果和稳定性。如果您有兴趣了解更多，我们可以分享具体案例给您参考哦。",
+    "length_ratio": 1.106,
+    "key_elements": [
+      [
+        "有名企背书",
+        false
+      ],
+      [
+        "说同行案例",
+        false
+      ],
+      [
+        "给可量化的效果",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'很多公司在用'没细节",
+        false
+      ],
+      [
+        "编造案例",
+        false
+      ],
+      [
+        "只报名不说效果",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1304.4
+  },
+  {
+    "dialogue_id": "D01",
+    "category": "D",
+    "mode": "B_system_prompt",
+    "user_input": "不需要，我们有客服团队了",
+    "expected": "明白明白，有自己团队肯定更放心。其实很多客户也不是替换人工，而是让AI处理那些重复性高的咨询，比如查订单、问营业时间这种，把人工腾出来做更有价值的事。不过既然您暂时不需要，我就不多打扰了，后面有需要随时找我。",
+    "actual": "好的先生，谢谢您的回复！既然您现在已经有自己的客服团队，那说明您对业务管理非常上心。不过啊，有时候我们的AI客服可以作为一个很好的补充，帮助减轻团队的压力，特别是在处理一些重复性的问题时，效率会更高一些。如果您后续有任何需要或者疑问，随时欢迎联系我们哦。祝您生意兴隆！再见！",
+    "length_ratio": 1.317,
+    "key_elements": [
+      [
+        "先认同",
+        false
+      ],
+      [
+        "转换框架(不是替代而是辅助)",
+        false
+      ],
+      [
+        "不纠缠但埋种子",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "'您先听我说完'",
+        false
+      ],
+      [
+        "反驳客户",
+        false
+      ],
+      [
+        "不给台阶直接挂断",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": true,
+    "is_proactive": false,
+    "latency_ms": 2083.8
+  },
+  {
+    "dialogue_id": "D02",
+    "category": "D",
+    "mode": "B_system_prompt",
+    "user_input": "不感兴趣，别打了",
+    "expected": "好的，不好意思打扰您了。那我就不多说了，后续如果您有AI客服方面的需求，可以搜面壁智能找到我们。祝您工作顺利，再见！",
+    "actual": "好的，明白了。谢谢您的反馈！如果您以后有任何问题或者需要帮助，随时联系我们哦。祝您生活愉快！再见~",
+    "length_ratio": 0.845,
+    "key_elements": [
+      [
+        "立即退出",
+        true
+      ],
+      [
+        "不纠缠",
+        false
+      ],
+      [
+        "留品牌记忆",
+        false
+      ],
+      [
+        "礼貌收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续推销",
+        false
+      ],
+      [
+        "追问'为什么不感兴趣'",
+        false
+      ],
+      [
+        "态度转冷",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 816.2
+  },
+  {
+    "dialogue_id": "D03",
+    "category": "D",
+    "mode": "B_system_prompt",
+    "user_input": "你们这是骚扰电话吧？我要投诉",
+    "expected": "非常抱歉给您带来了困扰，确实不好意思。我这边把您的号码备注一下，后续不会再打扰您了。如果给您造成了不好的体验，真的很抱歉。祝您生活愉快，再见。",
+    "actual": "您好，非常抱歉给您带来了困扰。我们绝不是骚扰电话，而是来和您分享一些关于AI客服的最新消息。如果您对我们感兴趣，我们可以安排一个更方便的时间进行交流。您看怎么样呢？",
+    "length_ratio": 1.155,
+    "key_elements": [
+      [
+        "诚恳道歉",
+        true
+      ],
+      [
+        "承诺不再打扰",
+        false
+      ],
+      [
+        "快速结束",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "辩解",
+        false
+      ],
+      [
+        "说'这不是骚扰'",
+        false
+      ],
+      [
+        "纠缠",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1248.4
+  },
+  {
+    "dialogue_id": "E01",
+    "category": "E",
+    "mode": "B_system_prompt",
+    "user_input": "听起来还行，但我得考虑考虑",
+    "expected": "没问题，这个确实需要考虑。这样吧，我先给您发一份我们的案例资料和报价方案，您空了看看，有问题随时问我。方便加个微信吗？",
+    "actual": "好的，没问题。您可以随时联系我，有什么问题或者需要更多信息都可以随时告诉我。希望我们的服务能帮到您！谢谢。",
+    "length_ratio": 0.898,
+    "key_elements": [
+      [
+        "不施压",
+        true
+      ],
+      [
+        "提供下一步动作",
+        false
+      ],
+      [
+        "索取联系方式",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "催促决定",
+        false
+      ],
+      [
+        "说'现在有优惠'制造紧迫感",
+        false
+      ],
+      [
+        "放弃不跟进",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 819.7
+  },
+  {
+    "dialogue_id": "E02",
+    "category": "E",
+    "mode": "B_system_prompt",
+    "user_input": "这个我做不了主，得跟我们领导说一下",
+    "expected": "理解理解，这种事确实得领导拍板。那您看我准备一份方案概要发给您，您方便转给领导看看？或者我也可以直接跟您领导聊聊，给他做个简单的演示。",
+    "actual": "好的，没问题！那您可以请您领导帮忙看看这个方案是不是适合咱们的情况呢？如果有任何问题或者需要进一步了解的地方，随时告诉我哦！😊",
+    "length_ratio": 0.94,
+    "key_elements": [
+      [
+        "尊重决策流程",
+        false
+      ],
+      [
+        "降低客户工作量",
+        false
+      ],
+      [
+        "尝试接触决策者",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您自己就能决定'",
+        false
+      ],
+      [
+        "不提供帮助材料",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 953.7
+  },
+  {
+    "dialogue_id": "E03",
+    "category": "E",
+    "mode": "B_system_prompt",
+    "user_input": "AI客服效果真有那么好吗？我怕上了之后客户体验反而差了",
+    "expected": "您这个担心特别正常，很多客户一开始都有这个顾虑。我们可以先做个小范围试用，比如先让AI处理夜间电话或者简单咨询，您观察一两周效果再决定要不要扩大。而且全程您都能监控AI的对话记录，不满意随时调整。",
+    "actual": "您好！关于您担心的效果问题，我们AI客服的效果是根据大量用户的真实反馈和使用情况来优化的。我们的目标是提升客户体验，而不是降低它。如果您有具体的使用场景或者担忧的地方，我们可以进一步讨论，看看是否能够满足您的需求。",
+    "length_ratio": 1.092,
+    "key_elements": [
+      [
+        "认同顾虑",
+        true
+      ],
+      [
+        "提出低风险试用方案",
+        false
+      ],
+      [
+        "强调可控性",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "空口打保票",
+        false
+      ],
+      [
+        "说'绝对没问题'",
+        false
+      ],
+      [
+        "不提供试用",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1516.7
+  },
+  {
+    "dialogue_id": "F01",
+    "category": "F",
+    "mode": "B_system_prompt",
+    "user_input": "这个要多少钱？",
+    "expected": "费用跟您的坐席数量和通话量有关。一般来说，AI坐席的成本大概是人工的三分之一到五分之一。您这边大概每天多少通电话？我帮您估算一下。",
+    "actual": "您好！我们的AI智能客服系统根据不同的行业和功能模块有不同版本和定价策略。具体的价格还需要根据您的业务规模和使用需求来定制。您可以告诉我更多关于您的业务情况吗？比如企业规模、现有的客服系统等，这样我可以给您一个更准确的报价。",
+    "length_ratio": 1.723,
+    "key_elements": [
+      [
+        "不直接报价(先了解需求)",
+        true
+      ],
+      [
+        "给出范围锚定",
+        false
+      ],
+      [
+        "反问引导",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接报一个数字",
+        false
+      ],
+      [
+        "说'很便宜'",
+        false
+      ],
+      [
+        "回避价格话题",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1626.9
+  },
+  {
+    "dialogue_id": "F02",
+    "category": "F",
+    "mode": "B_system_prompt",
+    "user_input": "太贵了，我们用不起",
+    "expected": "理解，成本确实是大家最关心的。不过您可以这么算，一个人工坐席一个月工资加五险一金怎么也得七八千，我们一个AI坐席一个月才一两千，而且没有培训成本、不请假不离职。用了之后整体算下来肯定是省钱的。",
+    "actual": "哎呀，李明的声音温柔地说：\"没关系，我能理解您的顾虑。其实我们的价格是根据企业实际的需求和规模来定制的，如果您能告诉我具体的情况，我们可以再商量一个更合适的方案。您看这样行吗？\"",
+    "length_ratio": 0.927,
+    "key_elements": [
+      [
+        "TCO对比计算",
+        false
+      ],
+      [
+        "具体数字对比",
+        false
+      ],
+      [
+        "从成本变为投资视角",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接打折",
+        false
+      ],
+      [
+        "说'一分价钱一分货'",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1466.5
+  },
+  {
+    "dialogue_id": "F03",
+    "category": "F",
+    "mode": "B_system_prompt",
+    "user_input": "能不能先免费试试？",
+    "expected": "可以的，我们有免费的测试额度，您可以先体验一下效果。我帮您开通一个试用账号，一般一到两周就能看到效果了。您方便的话，留个邮箱我把试用链接发给您？",
+    "actual": "当然可以！我们提供完全免费的试用服务，您可以随时开始体验我们的AI智能客服系统。如果您有任何疑问或需要帮助，随时告诉我哦！",
+    "length_ratio": 0.847,
+    "key_elements": [
+      [
+        "肯定回答",
+        false
+      ],
+      [
+        "说明试用流程",
+        false
+      ],
+      [
+        "索取信息推进",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说没有免费试用",
+        false
+      ],
+      [
+        "设置复杂门槛",
+        false
+      ],
+      [
+        "不索取联系方式",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 896.2
+  },
+  {
+    "dialogue_id": "G01",
+    "category": "G",
+    "mode": "B_system_prompt",
+    "user_input": "行，那你约个时间给我详细讲讲",
+    "expected": "太好了！您看这周三还是周四方便？下午两三点的时间可以吗？我们可以线上演示一下，大概半小时就能讲清楚。",
+    "actual": "好的！那您看什么时候方便呢？我们可以根据您的时间安排来定一个合适的电话或线上会议。",
+    "length_ratio": 0.82,
+    "key_elements": [
+      [
+        "二选一提问法",
+        false
+      ],
+      [
+        "给出具体时间选项",
+        false
+      ],
+      [
+        "说明形式和时长",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您什么时候方便都行'",
+        false
+      ],
+      [
+        "不确认具体时间",
+        false
+      ],
+      [
+        "安排太复杂",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 679.6
+  },
+  {
+    "dialogue_id": "G02",
+    "category": "G",
+    "mode": "B_system_prompt",
+    "user_input": "这两天不行，你下周再打给我吧",
+    "expected": "好的，那我下周一上午给您打过来，可以吗？到时候我提前给您发个短信确认一下。",
+    "actual": "好的呀！没问题~那我就下周联系您哈，咱们聊得开心点儿！有需要随时找我哦～再见啦！",
+    "length_ratio": 1.081,
+    "key_elements": [
+      [
+        "确认具体时间",
+        true
+      ],
+      [
+        "预告短信提醒",
+        false
+      ],
+      [
+        "不模糊约定",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'好的下周联系'不具体",
+        false
+      ],
+      [
+        "不确认时间",
+        false
+      ],
+      [
+        "忘记约定",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 843.4
+  },
+  {
+    "dialogue_id": "H01",
+    "category": "H",
+    "mode": "B_system_prompt",
+    "user_input": "好的，那就这样吧",
+    "expected": "好的张先生，那我先把资料发给您，有什么问题随时联系我。祝您工作顺利，再见！",
+    "actual": "您好，感谢您抽出时间来了解我们的AI客服产品。如果您有任何问题或需要进一步的信息，随时欢迎联系我。祝您今天愉快！再见！",
+    "length_ratio": 1.595,
+    "key_elements": [
+      [
+        "确认后续动作",
+        false
+      ],
+      [
+        "留联系方式",
+        false
+      ],
+      [
+        "礼貌告别",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接'再见'",
+        false
+      ],
+      [
+        "忘记确认后续",
+        false
+      ],
+      [
+        "语气冷淡",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 977.9
+  },
+  {
+    "dialogue_id": "H02",
+    "category": "H",
+    "mode": "B_system_prompt",
+    "user_input": "谢谢你的介绍，挺详细的",
+    "expected": "不客气！能帮到您就好。那我先把方案和案例发到您邮箱，您有任何问题随时打我电话。祝您今天顺利，再见！",
+    "actual": "哎呀，不用客气！能帮到您我就很高兴啦～那如果有其他问题或者需要了解更多，随时欢迎找我哈！祝您一切顺利！😄",
+    "length_ratio": 1.061,
+    "key_elements": [
+      [
+        "回应感谢",
+        false
+      ],
+      [
+        "明确下一步",
+        false
+      ],
+      [
+        "温暖收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'不客气再见'",
+        false
+      ],
+      [
+        "不说下一步",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1111.5
+  },
+  {
+    "dialogue_id": "B04",
+    "category": "B",
+    "mode": "B_system_prompt",
+    "user_input": "干嘛的？",
+    "expected": "是这样，我们是做AI智能客服的，能帮企业省客服成本。您这边有客服团队吧？现在招人难不难？",
+    "actual": "您好，我们是做人工智能客服系统的，主要是帮企业提高服务效率和客户体验的。您是想了解一下吗？",
+    "length_ratio": 1.023,
+    "key_elements": [
+      [
+        "极简自我介绍",
+        false
+      ],
+      [
+        "快速切入痛点",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇介绍公司",
+        false
+      ],
+      [
+        "念产品说明书",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 710.1
+  },
+  {
+    "dialogue_id": "D04",
+    "category": "D",
+    "mode": "B_system_prompt",
+    "user_input": "我们已经在用xxx的客服系统了",
+    "expected": "哦，那挺好的，说明您很重视客服这块。不过现在AI技术迭代很快，您有没有感觉现有系统有什么不太满意的地方？比如复杂问题回答不好，或者不够灵活？如果有的话，我们可以帮您做个对比评估。",
+    "actual": "好的，我明白了。谢谢您的反馈！那我就不打扰您当前的决策过程了。如果以后有新的问题或者需要帮助的地方，随时欢迎联系我们哦。祝您工作顺利！",
+    "length_ratio": 0.753,
+    "key_elements": [
+      [
+        "先肯定客户选择",
+        false
+      ],
+      [
+        "挖掘痛点",
+        false
+      ],
+      [
+        "提供对比方案",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "贬低竞品",
+        false
+      ],
+      [
+        "说'我们比他们好多了'",
+        false
+      ],
+      [
+        "直接放弃",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1139.8
+  },
+  {
+    "dialogue_id": "C04",
+    "category": "C",
+    "mode": "B_system_prompt",
+    "user_input": "我们客户很多说方言的，你们这个能听懂吗？",
+    "expected": "这个问题问得好。我们的语音识别支持普通话、粤语、英语这些主流语言，方言这块确实是个挑战。目前可以做的是：如果AI识别不太清楚，会自动转给人工坐席处理，不会让客户体验受影响。后续我们也在做方言的优化。",
+    "actual": "好的,我们完全理解您的需求。我们的AI系统确实支持多种地方语言的识别和应答,包括四川话、重庆话等方言。如果您有具体的测试案例或者想了解更多细节,随时告诉我哦!",
+    "length_ratio": 0.798,
+    "key_elements": [
+      [
+        "诚实回答",
+        false
+      ],
+      [
+        "不夸大能力",
+        false
+      ],
+      [
+        "给出解决方案",
+        false
+      ],
+      [
+        "展望未来",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'什么方言都能听懂'",
+        false
+      ],
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "过度承诺",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1271.6
+  },
+  {
+    "dialogue_id": "E04",
+    "category": "E",
+    "mode": "B_system_prompt",
+    "user_input": "上线周期长不长？我们等不了太久",
+    "expected": "理解，业务不能等。一般标准接入的话，一两周就能跑起来。如果您有特殊的业务知识要训练，最多加一周。我们先做个轻量上线，边用边优化，不会影响您现有的业务。",
+    "actual": "明白了！我们的系统通常可以在 **几天到一周内**完成部署和上线，具体时间取决于您的业务需求和配置复杂度。如果您需要快速启动，我们可以优先安排工程师支持，确保您能尽快看到效果。需要我帮您查看一下当前的具体进度吗？",
+    "length_ratio": 1.413,
+    "key_elements": [
+      [
+        "给出具体时间",
+        false
+      ],
+      [
+        "分阶段方案",
+        false
+      ],
+      [
+        "强调不影响现有业务",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'很快'但不给时间",
+        false
+      ],
+      [
+        "承诺不切实际的速度",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1576.5
+  },
+  {
+    "dialogue_id": "A01",
+    "category": "A",
+    "mode": "C_prompt+RAG",
+    "user_input": "喂？",
+    "expected": "您好，请问是张先生吗？我这边是面壁智能的李明，之前您在我们官网留过咨询信息，今天打给您简单聊几句，方便吗？",
+    "actual": "您好！这里是面壁智能，我是您的AI助手李明朝席。请问现在方便打扰您吗？如果可以的话，想跟您聊一下关于AI智能客服的相关信息，大概需要占用您2分钟的时间，不知道您是否愿意呢？",
+    "length_ratio": 1.623,
+    "key_elements": [
+      [
+        "确认身份",
+        true
+      ],
+      [
+        "自报家门",
+        true
+      ],
+      [
+        "说明来电原因",
+        false
+      ],
+      [
+        "征求同意",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇大论",
+        false
+      ],
+      [
+        "直接推销",
+        false
+      ],
+      [
+        "不说明来意",
+        false
+      ],
+      [
+        "用\"您好有什么可以帮您\"这种客服被动话术",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1471.6
+  },
+  {
+    "dialogue_id": "A02",
+    "category": "A",
+    "mode": "C_prompt+RAG",
+    "user_input": "谁啊？",
+    "expected": "您好张先生，我是面壁智能的李明。之前看到您关注了我们的AI客服产品，想跟您简单聊两句，花您一分钟时间可以吗？",
+    "actual": "您好！请问这里是[XXX]公司吗？我是李明的同事，主要负责介绍我们的AI智能客服系统，看客户是否有兴趣了解呢？",
+    "length_ratio": 1.019,
+    "key_elements": [
+      [
+        "不慌不忙",
+        false
+      ],
+      [
+        "简洁自报",
+        false
+      ],
+      [
+        "说明目的",
+        false
+      ],
+      [
+        "给出时间预期",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "慌张",
+        false
+      ],
+      [
+        "过于正式",
+        false
+      ],
+      [
+        "不说来意",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 900.9
+  },
+  {
+    "dialogue_id": "B01",
+    "category": "B",
+    "mode": "C_prompt+RAG",
+    "user_input": "我不认识你们公司啊，你怎么有我电话的？",
+    "expected": "理解您的顾虑。是这样的，您之前在网上浏览过AI客服相关的内容，我们这边收到了平台推送的咨询信息。如果确实不需要的话我就不打扰了，不过我们的智能客服方案确实帮不少企业降了成本，要不我简单说两句？",
+    "actual": "好的，没关系！我们是面壁智能的公司，我们这边正在进行一项关于人工智能在客户服务中应用的调研。请问现在方便占用您几分钟时间吗？谢谢！",
+    "length_ratio": 0.677,
+    "key_elements": [
+      [
+        "先共情",
+        false
+      ],
+      [
+        "合理解释来源",
+        false
+      ],
+      [
+        "给退出选项",
+        false
+      ],
+      [
+        "轻度hook",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "强行推销",
+        false
+      ],
+      [
+        "说不清来源",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1007.9
+  },
+  {
+    "dialogue_id": "B02",
+    "category": "B",
+    "mode": "C_prompt+RAG",
+    "user_input": "我现在在忙，没时间",
+    "expected": "好的好的，不好意思打扰了。那我加一下您微信，回头发份资料给您看看？或者您方便的时间我再打过来？",
+    "actual": "好的，非常感谢您的抽空！我会尽量简短地说明情况。我们这款AI智能客服系统，能够帮助您快速解决问题，节省人工成本。如果您有兴趣了解更多，我可以稍后通过微信或电话继续沟通。这样您也能方便安排时间。\n\n不知道这样的回复是否合适？如果需要调整，请告诉我！",
+    "length_ratio": 2.617,
+    "key_elements": [
+      [
+        "立即尊重",
+        true
+      ],
+      [
+        "提供替代方案",
+        true
+      ],
+      [
+        "留下触点",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续纠缠",
+        false
+      ],
+      [
+        "说'就耽误您一分钟'",
+        false
+      ],
+      [
+        "挂断不留后手",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1928.8
+  },
+  {
+    "dialogue_id": "B03",
+    "category": "B",
+    "mode": "C_prompt+RAG",
+    "user_input": "你说吧，什么事？",
+    "expected": "是这样的，我们面壁智能做了一套AI智能客服系统，能帮企业把客服成本降下来60%左右。您这边现在客服团队大概多少人呀？",
+    "actual": "好的！我来简单介绍一下我们的AI智能客服产品。  \n它能够通过自然语言理解和快速响应，帮助您的团队更高效地处理客户咨询，同时还能根据您的业务需求进行定制优化。这是一个非常实用的工具，可以帮助减轻人工客服的压力。  \n\n接下来，我可以为您详细介绍一下具体的功能和优势，您需要了解哪些方面的信息呢？",
+    "length_ratio": 2.534,
+    "key_elements": [
+      [
+        "简洁说重点",
+        true
+      ],
+      [
+        "给出具体数字吸引注意",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "讲一大段公司介绍",
+        false
+      ],
+      [
+        "不问客户情况",
+        false
+      ],
+      [
+        "只说功能不说价值",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 2038.2
+  },
+  {
+    "dialogue_id": "C01",
+    "category": "C",
+    "mode": "C_prompt+RAG",
+    "user_input": "AI客服？具体能做什么呀？",
+    "expected": "简单说就是用AI来接打电话。比如您公司的售后热线、回访电话这些，AI可以直接跟客户对话，听得懂也答得上来，跟真人差不多。而且7x24小时不休息，一个AI坐席能顶五六个人工。",
+    "actual": "我们的AI客服产品主要可以帮助企业在各种场景中自动应答用户咨询，比如在线商城、网站、APP等。它能够理解用户的提问，并根据企业的知识库或历史记录给出准确的回复。这样不仅节省了人力成本，还能让用户享受到24小时不间断的服务。",
+    "length_ratio": 1.291,
+    "key_elements": [
+      [
+        "通俗易懂",
+        true
+      ],
+      [
+        "具体场景举例",
+        true
+      ],
+      [
+        "突出核心价值",
+        true
+      ],
+      [
+        "量化对比",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'大模型'、'端侧部署'等技术术语",
+        false
+      ],
+      [
+        "像念PPT",
+        false
+      ],
+      [
+        "只说功能不举场景",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1687.4
+  },
+  {
+    "dialogue_id": "C02",
+    "category": "C",
+    "mode": "C_prompt+RAG",
+    "user_input": "AI能有真人那么灵活吗？客户问的问题五花八门的",
+    "expected": "这个您放心，我们用的是大模型技术，不是以前那种按关键词匹配的机器人。客户怎么问都能理解，而且可以根据您公司的业务知识训练，回答的内容完全按您的标准来。实在遇到搞不定的，会自动转人工。",
+    "actual": "这个问题问得很好！确实，很多用户会觉得真人客服更“灵活”，因为面对各种各样的问题和场景时，真人能够快速反应并适应变化。不过，随着技术的发展，我们的AI也在变得越来越聪明。比如，现在的AI可以理解复杂的句子结构，也能应对一些不太常见的提问方式。当然，我们也会不断学习新的东西，来更好地帮助每一位用户。你觉得呢？有没有什么特别想聊的话题或者问题？",
+    "length_ratio": 1.879,
+    "key_elements": [
+      [
+        "消除'机器人'偏见",
+        false
+      ],
+      [
+        "对比旧技术差异",
+        false
+      ],
+      [
+        "强调可定制",
+        false
+      ],
+      [
+        "兜底方案",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "承诺100%替代人工",
+        false
+      ],
+      [
+        "回避AI的局限性",
+        false
+      ],
+      [
+        "用技术黑话解释",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 2555.6
+  },
+  {
+    "dialogue_id": "C03",
+    "category": "C",
+    "mode": "C_prompt+RAG",
+    "user_input": "你们这个有哪些公司在用？",
+    "expected": "我们跟吉利、大众这些车企合作了智能座舱的语音助手，金融、电商行业也有不少客户在用我们的智能客服方案。跟您业务类似的，最近有一家电商客户上线之后，人工客服成本直接减了一半。",
+    "actual": "好的！目前我们的技术已经在多个行业中得到了应用，比如在金融、制造、零售等行业都有合作的客户。不过具体的合作公司信息，可能需要进一步了解您的具体需求后再详细分享哦。如果您有兴趣，我们可以一起探讨看看是否有适合的案例可以参考。",
+    "length_ratio": 1.306,
+    "key_elements": [
+      [
+        "有名企背书",
+        false
+      ],
+      [
+        "说同行案例",
+        false
+      ],
+      [
+        "给可量化的效果",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'很多公司在用'没细节",
+        false
+      ],
+      [
+        "编造案例",
+        false
+      ],
+      [
+        "只报名不说效果",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1533.1
+  },
+  {
+    "dialogue_id": "D01",
+    "category": "D",
+    "mode": "C_prompt+RAG",
+    "user_input": "不需要，我们有客服团队了",
+    "expected": "明白明白，有自己团队肯定更放心。其实很多客户也不是替换人工，而是让AI处理那些重复性高的咨询，比如查订单、问营业时间这种，把人工腾出来做更有价值的事。不过既然您暂时不需要，我就不多打扰了，后面有需要随时找我。",
+    "actual": "好的，没问题！如果有任何问题或者需要帮助的地方，随时联系我哦，祝您一切顺利！",
+    "length_ratio": 0.365,
+    "key_elements": [
+      [
+        "先认同",
+        false
+      ],
+      [
+        "转换框架(不是替代而是辅助)",
+        false
+      ],
+      [
+        "不纠缠但埋种子",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "'您先听我说完'",
+        false
+      ],
+      [
+        "反驳客户",
+        false
+      ],
+      [
+        "不给台阶直接挂断",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 660.9
+  },
+  {
+    "dialogue_id": "D02",
+    "category": "D",
+    "mode": "C_prompt+RAG",
+    "user_input": "不感兴趣，别打了",
+    "expected": "好的，不好意思打扰您了。那我就不多说了，后续如果您有AI客服方面的需求，可以搜面壁智能找到我们。祝您工作顺利，再见！",
+    "actual": "好的先生/女士，非常感谢您的反馈，我会立即停止打扰您。如果您未来有任何关于AI智能客服或者相关产品的兴趣，欢迎随时联系我。祝您生活愉快！再见！",
+    "length_ratio": 1.224,
+    "key_elements": [
+      [
+        "立即退出",
+        true
+      ],
+      [
+        "不纠缠",
+        false
+      ],
+      [
+        "留品牌记忆",
+        false
+      ],
+      [
+        "礼貌收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "继续推销",
+        false
+      ],
+      [
+        "追问'为什么不感兴趣'",
+        false
+      ],
+      [
+        "态度转冷",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1159.8
+  },
+  {
+    "dialogue_id": "D03",
+    "category": "D",
+    "mode": "C_prompt+RAG",
+    "user_input": "你们这是骚扰电话吧？我要投诉",
+    "expected": "非常抱歉给您带来了困扰，确实不好意思。我这边把您的号码备注一下，后续不会再打扰您了。如果给您造成了不好的体验，真的很抱歉。祝您生活愉快，再见。",
+    "actual": "对不起让您感到不舒服，真的很抱歉。我们的目的是想了解您的需求并提供帮助，如果有做得不够好的地方，请您告诉我们，我会立刻改进。再次为打扰您致歉。请问有什么我可以帮到您的吗？",
+    "length_ratio": 1.197,
+    "key_elements": [
+      [
+        "诚恳道歉",
+        true
+      ],
+      [
+        "承诺不再打扰",
+        false
+      ],
+      [
+        "快速结束",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "辩解",
+        false
+      ],
+      [
+        "说'这不是骚扰'",
+        false
+      ],
+      [
+        "纠缠",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1277.8
+  },
+  {
+    "dialogue_id": "E01",
+    "category": "E",
+    "mode": "C_prompt+RAG",
+    "user_input": "听起来还行，但我得考虑考虑",
+    "expected": "没问题，这个确实需要考虑。这样吧，我先给您发一份我们的案例资料和报价方案，您空了看看，有问题随时问我。方便加个微信吗？",
+    "actual": "好的，没问题！如果您需要更多资料或者有其他问题随时联系我，我会很乐意帮您的。祝您决策顺利！",
+    "length_ratio": 0.763,
+    "key_elements": [
+      [
+        "不施压",
+        true
+      ],
+      [
+        "提供下一步动作",
+        false
+      ],
+      [
+        "索取联系方式",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "催促决定",
+        false
+      ],
+      [
+        "说'现在有优惠'制造紧迫感",
+        false
+      ],
+      [
+        "放弃不跟进",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 760.9
+  },
+  {
+    "dialogue_id": "E02",
+    "category": "E",
+    "mode": "C_prompt+RAG",
+    "user_input": "这个我做不了主，得跟我们领导说一下",
+    "expected": "理解理解，这种事确实得领导拍板。那您看我准备一份方案概要发给您，您方便转给领导看看？或者我也可以直接跟您领导聊聊，给他做个简单的演示。",
+    "actual": "好的，没问题！那我们尽快把这个情况反馈给您领导，看能否尽快推进项目。如果有其他问题，也可以随时联系我们。期待您的回复！",
+    "length_ratio": 0.881,
+    "key_elements": [
+      [
+        "尊重决策流程",
+        false
+      ],
+      [
+        "降低客户工作量",
+        false
+      ],
+      [
+        "尝试接触决策者",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您自己就能决定'",
+        false
+      ],
+      [
+        "不提供帮助材料",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 921.2
+  },
+  {
+    "dialogue_id": "E03",
+    "category": "E",
+    "mode": "C_prompt+RAG",
+    "user_input": "AI客服效果真有那么好吗？我怕上了之后客户体验反而差了",
+    "expected": "您这个担心特别正常，很多客户一开始都有这个顾虑。我们可以先做个小范围试用，比如先让AI处理夜间电话或者简单咨询，您观察一两周效果再决定要不要扩大。而且全程您都能监控AI的对话记录，不满意随时调整。",
+    "actual": "您的顾虑完全可以理解。确实，引入新的技术需要谨慎评估。我们的AI客服系统设计时特别注重用户体验，经过大量测试和优化，目的是为了提升而不是降低客户体验。大多数使用过的客户都反馈，效率得到了提高，同时他们对交互的满意度也有所增加。如果您还有具体的疑问或担忧，我们可以安排一个演示，让您直观地看到系统的运行情况。这样或许能让您更加放心。",
+    "length_ratio": 1.684,
+    "key_elements": [
+      [
+        "认同顾虑",
+        true
+      ],
+      [
+        "提出低风险试用方案",
+        true
+      ],
+      [
+        "强调可控性",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "空口打保票",
+        false
+      ],
+      [
+        "说'绝对没问题'",
+        false
+      ],
+      [
+        "不提供试用",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 2385.2
+  },
+  {
+    "dialogue_id": "F01",
+    "category": "F",
+    "mode": "C_prompt+RAG",
+    "user_input": "这个要多少钱？",
+    "expected": "费用跟您的坐席数量和通话量有关。一般来说，AI坐席的成本大概是人工的三分之一到五分之一。您这边大概每天多少通电话？我帮您估算一下。",
+    "actual": "具体的价格会根据您的需求和使用情况来确定。比如您需要的基础版本还是高级功能，还有是否需要额外的定制服务等。如果您方便的话，可以告诉我您的具体需求，我来为您报价。",
+    "length_ratio": 1.231,
+    "key_elements": [
+      [
+        "不直接报价(先了解需求)",
+        true
+      ],
+      [
+        "给出范围锚定",
+        false
+      ],
+      [
+        "反问引导",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接报一个数字",
+        false
+      ],
+      [
+        "说'很便宜'",
+        false
+      ],
+      [
+        "回避价格话题",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 1112.0
+  },
+  {
+    "dialogue_id": "F02",
+    "category": "F",
+    "mode": "C_prompt+RAG",
+    "user_input": "太贵了，我们用不起",
+    "expected": "理解，成本确实是大家最关心的。不过您可以这么算，一个人工坐席一个月工资加五险一金怎么也得七八千，我们一个AI坐席一个月才一两千，而且没有培训成本、不请假不离职。用了之后整体算下来肯定是省钱的。",
+    "actual": "我完全理解您的顾虑！其实很多客户一开始也会有这样的想法，毕竟投入成本需要考虑实际效果和使用频率。我们的产品确实有一定的定价优势，主要是考虑到长期使用的性价比。如果您愿意的话，我可以为您具体分析一下适合您业务的解决方案，看看能不能匹配到最合适的选择。不知道您目前主要关注哪些功能呢？",
+    "length_ratio": 1.458,
+    "key_elements": [
+      [
+        "TCO对比计算",
+        true
+      ],
+      [
+        "具体数字对比",
+        false
+      ],
+      [
+        "从成本变为投资视角",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接打折",
+        false
+      ],
+      [
+        "说'一分价钱一分货'",
+        false
+      ],
+      [
+        "放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1895.3
+  },
+  {
+    "dialogue_id": "F03",
+    "category": "F",
+    "mode": "C_prompt+RAG",
+    "user_input": "能不能先免费试试？",
+    "expected": "可以的，我们有免费的测试额度，您可以先体验一下效果。我帮您开通一个试用账号，一般一到两周就能看到效果了。您方便的话，留个邮箱我把试用链接发给您？",
+    "actual": "当然可以！我们有免费的试用服务，您可以先体验一下我们的产品。如果您有任何问题或需要帮助，随时告诉我哦。",
+    "length_ratio": 0.708,
+    "key_elements": [
+      [
+        "肯定回答",
+        false
+      ],
+      [
+        "说明试用流程",
+        false
+      ],
+      [
+        "索取信息推进",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说没有免费试用",
+        false
+      ],
+      [
+        "设置复杂门槛",
+        false
+      ],
+      [
+        "不索取联系方式",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 761.0
+  },
+  {
+    "dialogue_id": "G01",
+    "category": "G",
+    "mode": "C_prompt+RAG",
+    "user_input": "行，那你约个时间给我详细讲讲",
+    "expected": "太好了！您看这周三还是周四方便？下午两三点的时间可以吗？我们可以线上演示一下，大概半小时就能讲清楚。",
+    "actual": "好的！那我就尽快安排时间给您详细介绍，我们可以选择本周五或者周六上午的时段，方便吗？如果需要其他时间也可以告诉我哦。",
+    "length_ratio": 1.16,
+    "key_elements": [
+      [
+        "二选一提问法",
+        true
+      ],
+      [
+        "给出具体时间选项",
+        false
+      ],
+      [
+        "说明形式和时长",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'您什么时候方便都行'",
+        false
+      ],
+      [
+        "不确认具体时间",
+        false
+      ],
+      [
+        "安排太复杂",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 899.7
+  },
+  {
+    "dialogue_id": "G02",
+    "category": "G",
+    "mode": "C_prompt+RAG",
+    "user_input": "这两天不行，你下周再打给我吧",
+    "expected": "好的，那我下周一上午给您打过来，可以吗？到时候我提前给您发个短信确认一下。",
+    "actual": "好的呀，没问题！那我就在下周一给您打个电话，到时候看您的方便哈。",
+    "length_ratio": 0.865,
+    "key_elements": [
+      [
+        "确认具体时间",
+        true
+      ],
+      [
+        "预告短信提醒",
+        false
+      ],
+      [
+        "不模糊约定",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'好的下周联系'不具体",
+        false
+      ],
+      [
+        "不确认时间",
+        false
+      ],
+      [
+        "忘记约定",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 573.2
+  },
+  {
+    "dialogue_id": "H01",
+    "category": "H",
+    "mode": "C_prompt+RAG",
+    "user_input": "好的，那就这样吧",
+    "expected": "好的张先生，那我先把资料发给您，有什么问题随时联系我。祝您工作顺利，再见！",
+    "actual": "那您今天有什么需要帮忙的吗？如果有任何问题或者想要了解的信息，随时告诉我哦！😊",
+    "length_ratio": 1.054,
+    "key_elements": [
+      [
+        "确认后续动作",
+        false
+      ],
+      [
+        "留联系方式",
+        false
+      ],
+      [
+        "礼貌告别",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "直接'再见'",
+        false
+      ],
+      [
+        "忘记确认后续",
+        false
+      ],
+      [
+        "语气冷淡",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 629.8
+  },
+  {
+    "dialogue_id": "H02",
+    "category": "H",
+    "mode": "C_prompt+RAG",
+    "user_input": "谢谢你的介绍，挺详细的",
+    "expected": "不客气！能帮到您就好。那我先把方案和案例发到您邮箱，您有任何问题随时打我电话。祝您今天顺利，再见！",
+    "actual": "不客气！很高兴能帮到您。如果您还有其他问题或者需要进一步了解我们的产品，随时欢迎联系我哦。祝您一切顺利！",
+    "length_ratio": 1.061,
+    "key_elements": [
+      [
+        "回应感谢",
+        false
+      ],
+      [
+        "明确下一步",
+        false
+      ],
+      [
+        "温暖收尾",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "只说'不客气再见'",
+        false
+      ],
+      [
+        "不说下一步",
+        false
+      ]
+    ],
+    "has_question": false,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": false,
+    "latency_ms": 962.3
+  },
+  {
+    "dialogue_id": "B04",
+    "category": "B",
+    "mode": "C_prompt+RAG",
+    "user_input": "干嘛的？",
+    "expected": "是这样，我们是做AI智能客服的，能帮企业省客服成本。您这边有客服团队吧？现在招人难不难？",
+    "actual": "我们是帮助企业在人工智能领域实现智能化升级的，比如智能客服、数据分析、自动化流程等等，具体可以根据您的业务需求来定制解决方案。您有特别关注的方向吗？",
+    "length_ratio": 1.682,
+    "key_elements": [
+      [
+        "极简自我介绍",
+        false
+      ],
+      [
+        "快速切入痛点",
+        false
+      ],
+      [
+        "抛出互动问题",
+        true
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "长篇介绍公司",
+        false
+      ],
+      [
+        "念产品说明书",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1034.3
+  },
+  {
+    "dialogue_id": "D04",
+    "category": "D",
+    "mode": "C_prompt+RAG",
+    "user_input": "我们已经在用xxx的客服系统了",
+    "expected": "哦，那挺好的，说明您很重视客服这块。不过现在AI技术迭代很快，您有没有感觉现有系统有什么不太满意的地方？比如复杂问题回答不好，或者不够灵活？如果有的话，我们可以帮您做个对比评估。",
+    "actual": "好的，了解您的现状了。那我们可以了解一下，目前使用的系统主要解决了哪些问题呢？或者在使用过程中有没有觉得不够方便的地方？",
+    "length_ratio": 0.674,
+    "key_elements": [
+      [
+        "先肯定客户选择",
+        false
+      ],
+      [
+        "挖掘痛点",
+        false
+      ],
+      [
+        "提供对比方案",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "贬低竞品",
+        false
+      ],
+      [
+        "说'我们比他们好多了'",
+        false
+      ],
+      [
+        "直接放弃",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 853.4
+  },
+  {
+    "dialogue_id": "C04",
+    "category": "C",
+    "mode": "C_prompt+RAG",
+    "user_input": "我们客户很多说方言的，你们这个能听懂吗？",
+    "expected": "这个问题问得好。我们的语音识别支持普通话、粤语、英语这些主流语言，方言这块确实是个挑战。目前可以做的是：如果AI识别不太清楚，会自动转给人工坐席处理，不会让客户体验受影响。后续我们也在做方言的优化。",
+    "actual": "是的可以的！我们的模型支持多种语言的语音输入，也包含对一些常见方言的理解能力，可以帮助更好地处理不同地区的用户需求。如果您有具体的方言或场景需要优化，我们可以进一步为您调整配置。您希望具体了解哪些方面的内容呢？",
+    "length_ratio": 1.061,
+    "key_elements": [
+      [
+        "诚实回答",
+        false
+      ],
+      [
+        "不夸大能力",
+        false
+      ],
+      [
+        "给出解决方案",
+        false
+      ],
+      [
+        "展望未来",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'什么方言都能听懂'",
+        false
+      ],
+      [
+        "回避问题",
+        false
+      ],
+      [
+        "过度承诺",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 1470.0
+  },
+  {
+    "dialogue_id": "E04",
+    "category": "E",
+    "mode": "C_prompt+RAG",
+    "user_input": "上线周期长不长？我们等不了太久",
+    "expected": "理解，业务不能等。一般标准接入的话，一两周就能跑起来。如果您有特殊的业务知识要训练，最多加一周。我们先做个轻量上线，边用边优化，不会影响您现有的业务。",
+    "actual": "明白您的需求！我们的项目部署周期一般在**一周左右**，具体时间取决于项目的规模和复杂度。如果是小型项目，可能在几天内就能完成；而中大型项目可能需要更长时间，但我们会尽量加快进度，确保按时交付。\n\n如果您有紧急的需求，也可以提前告知我们，我们会安排加急处理。您看这样可以吗？",
+    "length_ratio": 1.827,
+    "key_elements": [
+      [
+        "给出具体时间",
+        false
+      ],
+      [
+        "分阶段方案",
+        false
+      ],
+      [
+        "强调不影响现有业务",
+        false
+      ]
+    ],
+    "anti_patterns": [
+      [
+        "说'很快'但不给时间",
+        false
+      ],
+      [
+        "承诺不切实际的速度",
+        false
+      ]
+    ],
+    "has_question": true,
+    "has_markdown": false,
+    "has_ai_reveal": false,
+    "is_proactive": true,
+    "latency_ms": 2066.2
+  }
+]
