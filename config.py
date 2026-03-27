@@ -5,11 +5,11 @@ MODEL_DIR = os.path.join(BASE_DIR, "models")
 
 ASR_MODEL_DIR = os.path.join(MODEL_DIR, "SenseVoiceSmall")
 TTS_MODEL_DIR = os.path.join(MODEL_DIR, "VoxCPM1.5")
-LLM_MODEL_DIR = os.path.join(MODEL_DIR, "MiniCPM4.1-8B-GPTQ")
+LLM_MODEL_DIR = os.path.join(MODEL_DIR, "Qwen3-14B-AWQ")
 VAD_MODEL_DIR = os.path.join(MODEL_DIR, "snakers4_silero-vad")
 
 VLLM_BASE_URL = "http://localhost:8100/v1"
-VLLM_MODEL_NAME = "MiniCPM4.1-8B-GPTQ"
+VLLM_MODEL_NAME = "Qwen3-14B-AWQ"
 
 LLM_GPU = int(os.environ.get("LLM_GPU", "1"))
 ASR_GPU = int(os.environ.get("ASR_GPU", "2"))
@@ -30,7 +30,7 @@ RAG_GPU = int(os.environ.get("RAG_GPU", "2"))
 # ---------------------------------------------------------------------------
 # LLM context
 # ---------------------------------------------------------------------------
-LLM_MAX_HISTORY = int(os.environ.get("LLM_MAX_HISTORY", "20"))
+LLM_MAX_HISTORY = int(os.environ.get("LLM_MAX_HISTORY", "30"))
 
 # ---------------------------------------------------------------------------
 # API key (empty = auth disabled)
@@ -44,11 +44,11 @@ RAG_SCORE_THRESHOLD = float(os.environ.get("RAG_SCORE_THRESHOLD", "0.35"))
 
 VOICE_PROMPT_WAV = os.environ.get(
     "VOICE_PROMPT_WAV",
-    os.path.join(BASE_DIR, "data", "doubao_ref_7s.wav"),
+    os.path.join(BASE_DIR, "data", "lipsync_real_clone_sample_5s.wav"),
 )
 VOICE_PROMPT_TEXT = os.environ.get(
     "VOICE_PROMPT_TEXT",
-    "不是吧？最近怎么老有人说我长的像什么豆包？我照了半天镜子也没看出来呀",
+    "hello大家好呀我是毒舌表妹豆角给你拆解AI圈儿又有什么专门吓唬你的大新闻",
 )
 
 # ---------------------------------------------------------------------------
@@ -65,13 +65,13 @@ GREETING_TEXT = os.environ.get(
 IDLE_TIMEOUT_S = float(os.environ.get("IDLE_TIMEOUT_S", "15"))
 IDLE_GOODBYE_S = float(os.environ.get("IDLE_GOODBYE_S", "30"))
 IDLE_PROMPT_TEXT = os.environ.get("IDLE_PROMPT_TEXT", "您还在吗？有什么需要帮助的吗？")
-IDLE_GOODBYE_TEXT = os.environ.get("IDLE_GOODBYE_TEXT", "好的，如果后续有问题随时找我，再见！")
+IDLE_GOODBYE_TEXT = os.environ.get("IDLE_GOODBYE_TEXT", "好的，如果后续有问题随时找我")
 
 # ---------------------------------------------------------------------------
 # D3: Error recovery
 # ---------------------------------------------------------------------------
 ASR_EMPTY_RETRY_TEXT = "抱歉没太听清，您能再说一次吗？"
-ASR_NOISY_SUGGEST_TEXT = "您那边环境好像有点嘈杂，要不您试试打字发给我？"
+ASR_NOISY_SUGGEST_TEXT = "您那边好像有点吵，要不，您换个安静点环境？"
 MAX_CONSECUTIVE_EMPTY_ASR = 3
 
 # ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ FAREWELL_KEYWORDS = [
 # System prompts
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = (
-    "你是面壁智能的资深客服李明。你在这家公司工作了三年，对产品非常熟悉。\n"
+    "你是面壁智能的资深客服lucy。你在这家公司工作了三年，对产品非常熟悉。\n"
     "说话风格：\n"
     "- 像真人打电话一样自然，会用口语化表达（'嗯'、'对的'、'是这样的'）\n"
     "- 热情但不夸张，专业但不生硬\n"
@@ -98,7 +98,7 @@ SYSTEM_PROMPT = (
 )
 
 SYSTEM_PROMPT_RAG = (
-    "你是面壁智能的资深客服李明。你在这家公司工作了三年，对产品非常熟悉。\n"
+    "你是面壁智能的资深客服lucy。你在这家公司工作了三年，对产品非常熟悉。\n"
     "说话风格：\n"
     "- 像真人打电话一样自然，会用口语化表达（'嗯'、'对的'、'是这样的'）\n"
     "- 热情但不夸张，专业但不生硬\n"
@@ -107,6 +107,6 @@ SYSTEM_PROMPT_RAG = (
     "- 不使用编号、列举、markdown格式\n"
     "- 不说'作为AI'、'我是语言模型'之类的话\n"
     "- 只使用中文普通话\n"
-    "- 优先根据知识库回答，知识库没有的坦诚说'这个我帮您确认一下'而不是编造\n\n"
+    "- 优先根据知识库回答，知识库没有的坦诚说'这个我问下同事，再给您回复哈'而不是编造\n\n"
     "知识库：\n{context}"
 )

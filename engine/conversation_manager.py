@@ -1,12 +1,17 @@
-"""Production Conversation Manager v2.9 — state-race fix + hardening.
+"""Production Conversation Manager v3.0 — iPad demo hardening.
 
-v2.9 (over v2.8):
-  G1 — Fix: _run_pipeline awaits _stream_llm_tts; finally only resets THINKING
-  G2 — Fix: handle_text_input RAG wrapped in try/except
-  G5 — Fix: speculative ASR task tracked in _tasks for clean shutdown
-  G7 — Fix: sentence_queue bounded (maxsize=8) with thread-side backpressure
+v3.0 (over v2.9):
+  - LLM: MiniCPM4.1-8B-GPTQ → Qwen3-14B-AWQ (no thinking leakage)
+  - Voice clone: lipsync_real_clone_sample_5s.wav (higher fidelity)
+  - VAD: IDLE/barge-in thresholds raised (0.6/0.02) for iPad AEC environment
+  - Endpointing: short audio (<0.5s) uses SLOW_CHUNKS to avoid premature cuts
+  - ASR empty: silent return to LISTENING instead of "没听清" (first attempts)
+  - Filler gating: only send filler for utterances >1s
+  - Filler engine: MAX_FILLER_SEC cap, removed problematic words
+  - TTS safety: MAX_TTS_AUDIO_BYTES (30s) hard cap on all outgoing audio
+  - Manual barge-in: client-triggered via WebSocket
 
-v2.8 features preserved (crash-safe, filler, metrics, D1-D4 experience).
+v2.9 features preserved (state-race fix, crash-safe, metrics, D1-D4 experience).
 v2.2 features preserved (speculative ASR, captioner, dual-layer barge-in,
 adaptive endpointing, THINKING buffer).
 
@@ -48,8 +53,8 @@ BARGE_IN_VAD_THRESHOLD = 0.6
 BARGE_IN_RMS_THRESHOLD = 0.008
 BARGE_IN_CONFIRM_CHUNKS = 2       # ~64ms consecutive confirmation
 
-ENDPOINT_FAST_CHUNKS = 6          # ~192ms for short utterances (<0.5s)
-ENDPOINT_DEFAULT_CHUNKS = 10      # ~320ms for normal utterances
+ENDPOINT_FAST_CHUNKS = 8          # ~256ms for short utterances (<0.5s)
+ENDPOINT_DEFAULT_CHUNKS = 13      # ~416ms for normal utterances
 ENDPOINT_SLOW_CHUNKS = 20         # ~640ms for long utterances (>3s)
 
 SPECULATIVE_ASR_CHUNKS = 5        # ~160ms silence → start speculative ASR
@@ -182,6 +187,24 @@ class ConversationManager:
         self._consecutive_empty_asr = 0
         self._session_ending = False
 
+    async def handle_barge_in(self):
+        """Manual barge-in triggered by client (spacebar / button)."""
+        if self.state == State.SPEAKING and not self._cancel_speaking.is_set():
+            self._cancel_speaking.set()
+            self.state = State.LISTENING
+            self._audio_buffer = []
+            self._barge_confirm_count = 0
+            self._silence_count = 0
+            log.info("[Turn %d] Manual barge-in from client", self._turn)
+            await self._send({"type": "barge_in", "turn": self._turn, "source": "manual"})
+            await self._send({"type": "state", "state": "listening"})
+        elif self.state == State.THINKING:
+            self._cancel_speaking.set()
+            self.state = State.LISTENING
+            log.info("[Turn %d] Manual barge-in (was THINKING)", self._turn)
+            await self._send({"type": "barge_in", "turn": self._turn, "source": "manual"})
+            await self._send({"type": "state", "state": "listening"})
+
     def shutdown(self):
         """Cancel all tracked tasks. Call on WebSocket disconnect."""
         self._dead = True
@@ -210,11 +233,11 @@ class ConversationManager:
     async def _process_chunk(self, chunk: np.ndarray):
         vad_result = self.vad.process_chunk(chunk, SAMPLE_RATE)
         speech_prob = vad_result["speech_prob"]
-        is_speech = speech_prob >= 0.5
+        is_speech = speech_prob >= 0.6
         rms = _rms(chunk)
 
         if self.state == State.IDLE:
-            if is_speech and rms > 0.01:
+            if is_speech and rms > 0.02:
                 self.state = State.LISTENING
                 self._audio_buffer = [chunk]
                 self._silence_count = 0
@@ -304,7 +327,7 @@ class ConversationManager:
                     await self._on_endpointing()
 
         elif self.state == State.THINKING:
-            if is_speech and rms > 0.01:
+            if is_speech and rms > 0.02:
                 self._thinking_extra_buffer.append(chunk)
                 self._thinking_has_speech = True
             elif self._thinking_has_speech:
@@ -344,7 +367,7 @@ class ConversationManager:
     def _adaptive_endpoint_threshold(self) -> int:
         audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
         if audio_duration_ms < 500:
-            return ENDPOINT_FAST_CHUNKS
+            return ENDPOINT_SLOW_CHUNKS
         elif audio_duration_ms > 3000:
             return ENDPOINT_SLOW_CHUNKS
         else:
@@ -360,7 +383,8 @@ class ConversationManager:
         self._turn += 1
         await self._send({"type": "state", "state": "thinking"})
 
-        if self.filler:
+        audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
+        if self.filler and audio_duration_ms > 1000:
             await self._send_filler()
 
         audio = np.concatenate(self._audio_buffer) if self._audio_buffer else np.array([], dtype=np.float32)
@@ -473,21 +497,26 @@ class ConversationManager:
 
         await self._send({"type": "asr", "text": user_text, "latency_ms": round(asr_ms, 1), "turn": turn})
 
-        # D3: ASR empty → error recovery
+        # D3: ASR empty → silent return to LISTENING (first attempts), then recovery
         if not user_text or len(user_text) < 2:
             self._consecutive_empty_asr += 1
             if self._consecutive_empty_asr >= self._max_empty_asr:
                 recovery = self._asr_noisy_text
+                log.info("[Turn %d] ASR empty (#%d), recovery: '%s'", turn, self._consecutive_empty_asr, recovery)
+                self._cancel_speaking.clear()
+                self._barge_confirm_count = 0
+                self._speak_log_count = 0
+                self.state = State.SPEAKING
+                await self._send({"type": "state", "state": "speaking"})
+                await self._send({"type": "system_message", "text": recovery, "turn": turn})
+                await self._play_system_tts(recovery, turn)
             else:
-                recovery = self._asr_empty_text
-            log.info("[Turn %d] ASR empty (#%d), recovery: '%s'", turn, self._consecutive_empty_asr, recovery)
-            self._cancel_speaking.clear()
-            self._barge_confirm_count = 0
-            self._speak_log_count = 0
-            self.state = State.SPEAKING
-            await self._send({"type": "state", "state": "speaking"})
-            await self._send({"type": "system_message", "text": recovery, "turn": turn})
-            await self._play_system_tts(recovery, turn)
+                log.info("[Turn %d] ASR too short ('%s', #%d), silent return to LISTENING",
+                         turn, user_text or "", self._consecutive_empty_asr)
+                self.state = State.LISTENING
+                self._audio_buffer = []
+                self._silence_count = 0
+                await self._send({"type": "state", "state": "listening"})
             return
 
         self._consecutive_empty_asr = 0
@@ -654,7 +683,12 @@ class ConversationManager:
                     audio = chunk_data["audio"]
                     if audio.dtype != np.int16:
                         audio = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
-                    await self._send({"_audio": audio.tobytes()})
+                    raw = audio.tobytes()
+                    if len(raw) > self.MAX_TTS_AUDIO_BYTES:
+                        log.warning("[Turn %d] TTS chunk oversized (%d bytes) — truncating",
+                                    turn, len(raw))
+                        raw = raw[:self.MAX_TTS_AUDIO_BYTES]
+                    await self._send({"_audio": raw})
                     await asyncio.sleep(0.01)
 
             await self._send({
@@ -688,11 +722,14 @@ class ConversationManager:
                 self._session_ending = False
                 await self._send({"type": "session_end", "reason": "farewell"})
 
+    MAX_TTS_AUDIO_BYTES = 44100 * 2 * 30  # 30s at 44.1kHz 16-bit — hard safety cap
+
     async def _send_audio(self, audio_bytes: bytes):
-        """Send audio in chunks, checking cancel between each.
-        Uses larger chunks (200ms) for network stability over Cloudflare tunnels,
-        with periodic yield to keep the event loop responsive for keepalive.
-        """
+        """Send audio in chunks, checking cancel between each."""
+        if len(audio_bytes) > self.MAX_TTS_AUDIO_BYTES:
+            log.warning("Audio too large (%d bytes, %.1fs) — truncating to 30s",
+                        len(audio_bytes), len(audio_bytes) / 44100 / 2)
+            audio_bytes = audio_bytes[:self.MAX_TTS_AUDIO_BYTES]
         for i in range(0, len(audio_bytes), TTS_SEND_CHUNK_BYTES):
             if self._cancel_speaking.is_set():
                 return
@@ -704,6 +741,11 @@ class ConversationManager:
         try:
             filler_text, filler_bytes = self.filler.get_filler()
             if filler_bytes:
+                max_filler = 44100 * 2 * 2  # 2s hard cap for fillers
+                if len(filler_bytes) > max_filler:
+                    log.warning("[Turn %d] Filler '%s' oversized (%d bytes) — truncating",
+                                self._turn, filler_text, len(filler_bytes))
+                    filler_bytes = filler_bytes[:max_filler]
                 await self._send({"type": "filler", "text": filler_text, "turn": self._turn})
                 await self._send({"type": "audio_start", "turn": self._turn})
                 await self._send({"_audio": filler_bytes})
