@@ -19,3 +19,9 @@ static/livekit/test_audio/
 /tmp/
 *.log
 nohup.out
+devlog.md
+dashboard.html
+macos-app/
+mac_client.py
+start_a10.sh
+static/VoxLabsAgent.tar.gz

@@ -1,17 +1,12 @@
-"""Production Conversation Manager v3.0 — iPad demo hardening.
+"""Production Conversation Manager v2.9 — state-race fix + hardening.
 
-v3.0 (over v2.9):
-  - LLM: MiniCPM4.1-8B-GPTQ → Qwen3-14B-AWQ (no thinking leakage)
-  - Voice clone: lipsync_real_clone_sample_5s.wav (higher fidelity)
-  - VAD: IDLE/barge-in thresholds raised (0.6/0.02) for iPad AEC environment
-  - Endpointing: short audio (<0.5s) uses SLOW_CHUNKS to avoid premature cuts
-  - ASR empty: silent return to LISTENING instead of "没听清" (first attempts)
-  - Filler gating: only send filler for utterances >1s
-  - Filler engine: MAX_FILLER_SEC cap, removed problematic words
-  - TTS safety: MAX_TTS_AUDIO_BYTES (30s) hard cap on all outgoing audio
-  - Manual barge-in: client-triggered via WebSocket
+v2.9 (over v2.8):
+  G1 — Fix: _run_pipeline awaits _stream_llm_tts; finally only resets THINKING
+  G2 — Fix: handle_text_input RAG wrapped in try/except
+  G5 — Fix: speculative ASR task tracked in _tasks for clean shutdown
+  G7 — Fix: sentence_queue bounded (maxsize=8) with thread-side backpressure
 
-v2.9 features preserved (state-race fix, crash-safe, metrics, D1-D4 experience).
+v2.8 features preserved (crash-safe, filler, metrics, D1-D4 experience).
 v2.2 features preserved (speculative ASR, captioner, dual-layer barge-in,
 adaptive endpointing, THINKING buffer).
 

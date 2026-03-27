@@ -187,7 +187,7 @@ def load_engines():
         log.info("Using HeuristicCaptioner (no CAPTIONER_URL set)")
         engine["captioner"] = HeuristicCaptioner()
 
-    log.info("=== All engines loaded (v3.0) ===")
+    log.info("=== All engines loaded (v2.9) ===")
     log.info("  Speaker-aware VAD: %s (env=%s)", USE_SPEAKER_VAD, _speaker_vad_env)
     log.info("  Denoise (DTLN): %s (env=%s)", USE_DENOISE, _denoise_env)
     log.info("  API key auth: %s", "enabled" if API_KEY else "disabled")

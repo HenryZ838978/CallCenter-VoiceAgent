@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/首响延迟-458ms-00c853?style=for-the-badge" alt="458ms">
   <img src="https://img.shields.io/badge/打断精度-160ms-2196f3?style=for-the-badge" alt="160ms">
   <img src="https://img.shields.io/badge/ASR_CER-2.89%25-ff6f00?style=for-the-badge" alt="CER">
-  <img src="https://img.shields.io/badge/v2.4-Latest-7c4dff?style=for-the-badge" alt="v2.4">
+  <img src="https://img.shields.io/badge/v3.0-Latest-7c4dff?style=for-the-badge" alt="v3.0">
 </p>
 
 ---
@@ -40,20 +40,21 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  浏览器 (WebSocket / LiveKit WebRTC)                                    │
+│  客户端 (WebSocket / LiveKit WebRTC)                                    │
+│  浏览器 / 原生 macOS-iPad App (AVAudioEngine + WebSocket)              │
 │  麦克风 → PCM 16kHz → 服务端  |  服务端 → PCM 44.1kHz (流式) → 扬声器  │
 │  客户端: 即时 stopPlayback + Turn 序列号过滤在途帧                      │
 └────────────────────────────┬────────────────────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  ConversationManager v2.4 — 5 状态有限状态机                            │
+│  ConversationManager v3.0 — 5 状态有限状态机                            │
 │  IDLE → LISTENING → THINKING → SPEAKING → INTERRUPTED                  │
 │                                                                         │
 │  ┌─────┐  ┌──────────┐  ┌─────────┐  ┌─────┐  ┌───────┐  ┌─────────┐ │
 │  │ VAD │→ │Turn 检测  │→ │  ASR    │→ │ RAG │→ │  LLM  │→ │TTS 流式 │ │
 │  │     │  │          │  │         │  │     │  │       │  │         │ │
-│  │Silero│  │Smart Turn│  │FireRed  │  │ bge │  │MiniCPM│  │ VoxCPM  │ │
-│  │ CPU │  │v3 8M ONNX│  │ASR2-AED │  │small│  │4.1-8B │  │  1.5    │ │
+│  │Silero│  │Smart Turn│  │FireRed  │  │ bge │  │Qwen3  │  │ VoxCPM  │ │
+│  │ CPU │  │v3 8M ONNX│  │ASR2-AED │  │small│  │14B-AWQ│  │  1.5    │ │
 │  │     │  │ CPU 0.7ms│  │CER 2.89%│  │FAISS│  │ vLLM  │  │nanovllm │ │
 │  └─────┘  └──────────┘  └─────────┘  └─────┘  └───────┘  └─────────┘ │
 │                                                                         │
@@ -66,8 +67,8 @@
 | 组件 | 选型 | 为什么不选其他 |
 |---|---|---|
 | **ASR** | **FireRedASR2-AED** (1.15B) | CER 2.89%，超越 Doubao-ASR / Qwen3-ASR / FunASR；20+ 方言含粤语；多噪声场景训练，办公/街道/车内都能用。SenseVoice 在嘈杂环境识别为空。 |
-| **LLM** | **MiniCPM4.1-8B-GPTQ** | 面壁智能 8B 模型，GPTQ-Marlin 量化仅 4.9GB；支持 `enable_thinking=False` 禁用推理链；30+ 语种。Qwen-AWQ 在 Blackwell GPU 上不兼容 awq_marlin kernel。 |
-| **TTS** | **VoxCPM 1.5** | 面壁智能端到端语音合成，44.1kHz 高音质；8 秒样本即可克隆音色；`generate()` 是原生 generator，支持逐 chunk 流式输出。CosyVoice 延迟更高且不支持 nanovllm 加速。 |
+| **LLM** | **Qwen3-14B-AWQ** | 阿里通义 14B 模型，AWQ 量化 ~8GB；对话质量优秀，无 thinking 泄漏；30+ 语种。MiniCPM4.1 存在 `enable_thinking=False` 不生效导致推理链泄露的问题。 |
+| **TTS** | **VoxCPM 1.5** | 面壁智能端到端语音合成，44.1kHz 高音质；5 秒样本即可克隆音色；`generate()` 是原生 generator，支持逐 chunk 流式输出。CosyVoice 延迟更高且不支持 nanovllm 加速。 |
 | **RAG** | **bge-small-zh-v1.5** (91MB) | 512 维 embedding，3.6ms 检索延迟；对 1000 条 FAQ 量级完全够用。bge-m3 (2.2GB) 多语言更强但延迟 16ms，当前场景无需。 |
 | **Turn 检测** | **Pipecat Smart Turn v3** (8M) | 纯音频韵律分析，CPU 0.7ms；BSD-2 开源。VoTurn-80M 精度更高 (94.1%) 但需 GPU；LiveKit EOU 只看文本不听语音。 |
 | **VAD** | **Silero VAD** | 2.2MB，CPU 推理，32ms 粒度，久经验证。FireRedVAD (F1 97.57%) 更强但对环境噪音过于敏感，需进一步调参。 |
@@ -76,7 +77,7 @@
 
 | Infra | 选型 | 为什么 |
 |---|---|---|
-| **LLM 推理** | **vLLM 0.16** | 工业级 LLM serving：PagedAttention + GPTQ-Marlin kernel + Continuous Batching + OpenAI 兼容 API。比 raw transformers 快 10-50x。比 TGI 社区更活跃，多模态支持更好。 |
+| **LLM 推理** | **vLLM 0.16** | 工业级 LLM serving：PagedAttention + AWQ/GPTQ kernel + Continuous Batching + OpenAI 兼容 API。比 raw transformers 快 10-50x。比 TGI 社区更活跃，多模态支持更好。 |
 | **TTS 推理** | **nanovllm-voxcpm** | VoxCPM 专用轻量推理引擎：~1200 行代码，CUDA Graph + torch.compile，单进程无 IPC 开销。vLLM 不支持 VoxCPM 架构，raw PyTorch warmup 需 155 秒。 |
 | **WebSocket** | **FastAPI + uvicorn** | 原生 async WebSocket 支持，`nest_asyncio` 兼容 nanovllm 子进程事件循环。比 Flask-SocketIO 性能高 5-10x。 |
 | **WebRTC** | **LiveKit** (实验) | 开源 Go SFU，Apache 2.0；原生 SIP Bridge 接电话；UDP 传输无 TCP 在途帧问题。FireRedChat 同样选择了 LiveKit。 |
@@ -113,13 +114,19 @@ v2.4:  TTS.stream("整句") → chunk1→send→check → chunk2→send→check 
 
 用户停顿 160ms 时，Moonshine Tiny（27M，ONNX CPU）在后台启动投机 ASR。endpointing 确认后若音频未明显增长，直接复用结果，节省 ~117ms。
 
-### 5. 自适应 Endpointing
+### 5. 自适应 Endpointing (v3.0)
 
 | 用户说话时长 | 静默阈值 | 场景 |
 |---|---|---|
-| < 0.5s | 192ms | "好的"、"嗯" |
-| 0.5 ~ 3s | 320ms | 正常对话 |
+| < 0.5s | 640ms | "嗯..."、思考中（v3.0: 短音频不再被过早截断） |
+| 0.5 ~ 3s | 416ms | 正常对话 |
 | > 3s | 640ms | 长句、思考停顿 |
+
+### 6. 智能静默恢复 (v3.0)
+
+**问题**：用户轻微停顿被 endpointing 截断 → ASR 识别为空或 <2 字 → 系统回复"抱歉没听清" → 打断用户思考。
+
+**解法**：ASR 结果太短时静默回到 LISTENING 继续等待，仅在连续多次空识别后才触发恢复话术。Filler 也只在用户说话 >1s 后才发送。
 
 ---
 
@@ -129,7 +136,7 @@ v2.4:  TTS.stream("整句") → chunk1→send→check → chunk2→send→check 
 |---|---|---|
 | ASR (FireRedASR2) | **~200ms** | CER 2.89%，噪声鲁棒 |
 | RAG (bge-small + FAISS) | **3.6ms** | 59 条知识库 |
-| LLM (MiniCPM4.1 GPTQ via vLLM) | **~163ms** | 句级流式 |
+| LLM (Qwen3-14B-AWQ via vLLM) | **~163ms** | 句级流式 |
 | TTS TTFA (VoxCPM 流式) | **~174ms** | 首 chunk 延迟 |
 | **Pipeline 首响** | **~458ms** | 目标 < 500ms ✅ |
 
@@ -148,16 +155,17 @@ v2.4:  TTS.stream("整句") → chunk1→send→check → chunk2→send→check 
 ```bash
 # 1. LLM 推理服务 (GPU 1)
 CUDA_VISIBLE_DEVICES=1 python -m vllm.entrypoints.openai.api_server \
-  --model models/MiniCPM4.1-8B-GPTQ --served-model-name MiniCPM4.1-8B-GPTQ \
-  --trust-remote-code --dtype auto --quantization gptq_marlin \
-  --gpu-memory-utilization 0.40 --max-model-len 2048 --enforce-eager --port 8100
+  --model models/Qwen3-14B-AWQ --served-model-name Qwen3-14B-AWQ \
+  --trust-remote-code --dtype auto --quantization awq \
+  --gpu-memory-utilization 0.85 --max-model-len 4096 --enforce-eager --port 8100
 
-# 2. Voice Agent (GPU 2)
-CUDA_VISIBLE_DEVICES=2 ASR_DEVICE=cuda:0 TTS_DEVICE=cuda:0 \
-  USE_FIRERED_ASR=1 USE_MOONSHINE_ASR=1 USE_SMART_TURN=1 \
+# 2. Voice Agent (GPU 2 for TTS, GPU 7 for ASR)
+CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 TTS_GPU_UTIL=0.55 \
+  RAG_DEVICE=cpu USE_FIRERED_ASR=1 USE_MOONSHINE_ASR=1 USE_SMART_TURN=1 \
   python ws_server.py
 
-# 3. 打开浏览器 → https://localhost:3000 → Start Call
+# 3. 浏览器 → https://localhost:3000 → Start Call
+#    或 原生 macOS/iPad App → ws://服务器IP:3000/ws/voice
 ```
 
 ### 环境变量开关
@@ -171,7 +179,8 @@ CUDA_VISIBLE_DEVICES=2 ASR_DEVICE=cuda:0 TTS_DEVICE=cuda:0 \
 | `USE_SMART_TURN=1` | 启用 Smart Turn v3 语义 endpointing |
 | `USE_SPEAKER_VAD=1` | 启用 ECAPA-TDNN 声纹 VAD |
 | `USE_DENOISE=1` | 启用 DTLN 降噪（4MB ONNX） |
-| `TTS_GPU_UTIL=0.45` | TTS 显存占比 |
+| `TTS_GPU_UTIL=0.55` | TTS 显存占比 |
+| `RAG_DEVICE=cpu` | RAG embedding 设备（cpu/cuda） |
 
 ---
 
@@ -190,9 +199,11 @@ voiceagent/
 │   ├── rag.py                      #   bge-small + FAISS
 │   ├── captioner.py                #   副语言感知
 │   ├── denoiser.py                 #   DTLN 降噪 (可选)
-│   └── conversation_manager.py     #   v2.4 状态机核心
+│   ├── filler.py                   #   智能 Filler 管理 (>1s 才触发)
+│   └── conversation_manager.py     #   v3.0 状态机核心
 │
 ├── livekit_agent/                  # WebRTC 传输层 (实验)
+├── sft/                            # LoRA 微调 + GPTQ 量化脚本
 ├── static/voice_agent.html         # WebSocket 前端
 ├── ws_server.py                    # FastAPI 服务器
 └── config.py                       # 配置
@@ -220,7 +231,9 @@ voiceagent/
 | v2.1 | 双层打断，自适应 endpointing，THINKING 缓冲 |
 | v2.2 | 投机式 ASR，ECAPA-TDNN 声纹 VAD，副语言感知 |
 | v2.3 | Moonshine，Smart Turn v3，JitterBuffer |
-| **v2.4** | **FireRedASR2，流式 TTS 打断，事件循环修复，LiveKit 实验** |
+| v2.4 | FireRedASR2，流式 TTS 打断，事件循环修复，LiveKit 实验 |
+| v2.9 | 崩溃恢复，Filler 激活，Metrics，状态竞态修复 |
+| **v3.0** | **Qwen3-14B-AWQ，原生 App 支持，智能 endpointing，静默恢复，Filler 门控** |
 
 ---
 
@@ -231,10 +244,11 @@ voiceagent/
 | 组件 | 当前 | 可替换为 |
 |---|---|---|
 | ASR | FireRedASR2-AED | Whisper, Paraformer, SenseVoice, Moonshine |
-| LLM | MiniCPM4.1-GPTQ / vLLM | Qwen, LLaMA, DeepSeek, 任何 OpenAI 兼容 |
+| LLM | Qwen3-14B-AWQ / vLLM | MiniCPM, LLaMA, DeepSeek, 任何 OpenAI 兼容 |
 | TTS | VoxCPM 1.5 / nanovllm | CosyVoice, IndexTTS, GPT-SoVITS, Fish-Speech |
 | VAD | Silero / ECAPA-TDNN | FireRedVAD, WebRTC VAD |
 | Turn | Smart Turn v3 | VoTurn-80M, LiveKit EOU, BERT-based |
 | RAG | bge-small + FAISS | bge-m3, Milvus, Elasticsearch |
 | 降噪 | DTLN | RNNoise, FastEnhancer |
 | 传输 | WebSocket | LiveKit WebRTC, SIP |
+| 客户端 | 浏览器 / 原生 macOS-iPad App | LiveKit agent-starter-swift, WebRTC |
