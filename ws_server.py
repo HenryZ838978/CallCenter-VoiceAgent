@@ -36,6 +36,7 @@ from config import (
 )
 CAPTIONER_URL = os.environ.get("CAPTIONER_URL", "")
 CAPTIONER_MODEL = os.environ.get("CAPTIONER_MODEL", "MiniCPM-o-4.5-awq")
+DEMO_MODE = os.environ.get("DEMO_MODE", "0") == "1"
 USE_FIRERED_VAD = os.environ.get("USE_FIRERED_VAD", "0") == "1"
 USE_MOONSHINE_ASR = os.environ.get("USE_MOONSHINE_ASR", "0") == "1"
 USE_FIRERED_ASR = os.environ.get("USE_FIRERED_ASR", "0") == "1"
@@ -364,10 +365,14 @@ async def ws_voice(ws: WebSocket, token: str = Query(default="")):
     _total_sessions += 1
     _active_sessions[session_id] = {"started": time.time(), "cm": cm}
 
-    await send_fn({"type": "ready", "session_id": session_id, "version": "2.9"})
+    mode = "demo" if DEMO_MODE else "duplex"
+    await send_fn({"type": "ready", "session_id": session_id, "version": "3.1", "mode": mode})
 
-    if GREETING_TEXT:
+    if GREETING_TEXT and not DEMO_MODE:
         cm._track_task(cm.start_greeting(), name="greeting")
+
+    ptt_active = False
+    ptt_buffer: list[np.ndarray] = []
 
     try:
         while True:
@@ -380,13 +385,38 @@ async def ws_voice(ws: WebSocket, token: str = Query(default="")):
             if "bytes" in data and data["bytes"]:
                 raw = data["bytes"]
                 samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-                await cm.feed_audio(samples)
+                if DEMO_MODE:
+                    if ptt_active:
+                        ptt_buffer.append(samples)
+                else:
+                    await cm.feed_audio(samples)
 
             elif "text" in data and data["text"]:
                 msg = json.loads(data["text"])
                 msg_type = msg.get("type")
 
-                if msg_type == "text_input":
+                if msg_type == "ptt_start":
+                    ptt_active = True
+                    ptt_buffer = []
+                    slog.info("PTT start")
+                    await send_fn({"type": "ptt_ack", "recording": True})
+
+                elif msg_type == "ptt_end":
+                    ptt_active = False
+                    if ptt_buffer:
+                        audio = np.concatenate(ptt_buffer)
+                        ptt_buffer = []
+                        dur = len(audio) / 16000
+                        slog.info("PTT end (%.1fs, %d samples)", dur, len(audio))
+                        await send_fn({"type": "ptt_ack", "recording": False,
+                                       "duration_s": round(dur, 2)})
+                        await cm.process_ptt(audio)
+                    else:
+                        slog.info("PTT end (empty)")
+                        await send_fn({"type": "ptt_ack", "recording": False,
+                                       "duration_s": 0})
+
+                elif msg_type == "text_input":
                     await cm.handle_text_input(msg["text"])
 
                 elif msg_type == "manual_barge_in":
@@ -416,6 +446,8 @@ async def ws_voice(ws: WebSocket, token: str = Query(default="")):
 
                 elif msg_type == "reset":
                     cm.reset()
+                    ptt_active = False
+                    ptt_buffer = []
                     await send_fn({"type": "reset_ack"})
 
     except WebSocketDisconnect:

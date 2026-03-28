@@ -277,6 +277,67 @@ class ConversationManager:
         self._consecutive_empty_asr = 0
         self._session_ending = False
 
+    async def process_ptt(self, audio: np.ndarray):
+        """PTT (Push-to-Talk) demo mode: audio in → ASR → RAG → LLM → TTS. No VAD, no filler."""
+        self._turn += 1
+        turn = self._turn
+        t_start = time.perf_counter()
+        loop = asyncio.get_event_loop()
+
+        self.state = State.THINKING
+        await self._send({"type": "state", "state": "thinking"})
+
+        try:
+            if self.denoiser and len(audio) > CHUNK_SAMPLES * 3:
+                audio = await loop.run_in_executor(None, self.denoiser.process, audio)
+
+            asr_result = await loop.run_in_executor(None, self.asr.transcribe, audio)
+            user_text = _ASR_TAG_RE.sub("", asr_result["text"]).strip()
+            asr_ms = asr_result["latency_ms"]
+            await self._send({"type": "asr", "text": user_text,
+                              "latency_ms": round(asr_ms, 1), "turn": turn})
+
+            if not user_text or len(user_text) < 2:
+                log.info("[PTT Turn %d] ASR empty, returning to IDLE", turn)
+                self.state = State.IDLE
+                await self._send({"type": "state", "state": "idle"})
+                return
+
+            rag_context = ""
+            rag_ms = 0.0
+            try:
+                rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
+                rag_context = rag_result["context"]
+                rag_ms = rag_result["total_ms"]
+            except Exception:
+                pass
+            await self._send({"type": "rag", "context": rag_context,
+                              "latency_ms": round(rag_ms, 1), "turn": turn})
+
+            self._cancel_speaking.clear()
+            self.state = State.SPEAKING
+            await self._send({"type": "state", "state": "speaking"})
+            await self._stream_llm_tts(user_text, rag_context, turn, t_start, asr_ms, rag_ms)
+
+        except Exception as e:
+            log.error("[PTT Turn %d] Pipeline error: %s", turn, e, exc_info=True)
+            self.metrics.record_error()
+            try:
+                self._cancel_speaking.clear()
+                self.state = State.SPEAKING
+                await self._send({"type": "state", "state": "speaking"})
+                await self._play_system_tts(self._error_apology, turn)
+            except Exception:
+                pass
+        finally:
+            if self.state in (State.THINKING, State.SPEAKING):
+                self.state = State.IDLE
+                self._idle_since = time.monotonic()
+                try:
+                    await self._send({"type": "state", "state": "idle"})
+                except Exception:
+                    pass
+
     async def handle_barge_in(self):
         """Manual barge-in triggered by client (spacebar / button)."""
         if self.state == State.SPEAKING and not self._cancel_speaking.is_set():
