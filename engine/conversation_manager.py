@@ -45,7 +45,7 @@ CHUNK_MS = 32
 INTERRUPT_SILENCE_CHUNKS = 10     # ~320ms before processing interrupted speech
 
 BARGE_IN_VAD_THRESHOLD = 0.6
-BARGE_IN_RMS_THRESHOLD = 0.008
+BARGE_IN_RMS_THRESHOLD = 0.012
 BARGE_IN_CONFIRM_CHUNKS = 2       # ~64ms consecutive confirmation
 
 ENDPOINT_FAST_CHUNKS = 8          # ~256ms for short utterances (<0.5s)
@@ -57,6 +57,15 @@ SPECULATIVE_ASR_CHUNKS = 5        # ~160ms silence → start speculative ASR
 TTS_SEND_CHUNK_BYTES = 8820 * 2   # ~200ms at 44.1kHz 16-bit (larger chunks for network stability)
 
 IDLE_CHECK_INTERVAL_CHUNKS = 31   # ~1s — poll idle timeout at this cadence
+
+# ── ASR text accumulator — short/filler utterances wait for continuation ─────
+ASR_ACCUM_MAX_CHARS = 4           # ASR result ≤ this → buffer, don't send to LLM yet
+ASR_ACCUM_FLUSH_S = 3.0           # if no new speech within this, flush buffer to LLM
+ASR_ACCUM_MAX_SEGMENTS = 3        # max buffered segments before forced flush
+
+# ── Speaker gate (button-enroll → IDLE/SPEAKING gated by voiceprint) ─────────
+SPEAKER_GATE_CONFIRM_CHUNKS = 5   # consecutive target-speaker chunks to open gate
+SPEAKER_GATE_BUFFER_CHUNKS = 10   # ~320ms ring buffer for verification in IDLE
 
 
 def _rms(chunk: np.ndarray) -> float:
@@ -155,6 +164,86 @@ class ConversationManager:
         self._consecutive_empty_asr = 0
         self._session_ending = False
 
+        # Speaker gate state
+        self._speaker_enrolled = False
+        self._idle_gate_confirm = 0
+        self._idle_speech_ring: list[np.ndarray] = []
+        self._idle_speech_samples = 0
+
+        # ASR text accumulator
+        self._asr_accum_texts: list[str] = []
+        self._asr_accum_flush_task: Optional[asyncio.Task] = None
+
+    # ── Speaker enrollment API ───────────────────────────────────────────────
+
+    def enroll_speaker(self, audio: np.ndarray) -> dict:
+        """Enroll primary speaker voiceprint from button-recorded audio.
+        Returns {"success": bool, "samples": int, "duration_s": float}.
+        """
+        if not hasattr(self.vad, 'enroll_speaker'):
+            return {"success": False, "reason": "speaker_vad_not_available"}
+        if len(audio) < 8000:
+            return {"success": False, "reason": "audio_too_short",
+                    "samples": len(audio), "duration_s": round(len(audio) / SAMPLE_RATE, 2)}
+        ok = self.vad.enroll_speaker(audio)
+        self._speaker_enrolled = ok
+        self._idle_gate_confirm = 0
+        self._idle_speech_ring = []
+        self._idle_speech_samples = 0
+        log.info("Speaker enrollment: %s (%d samples, %.1fs)",
+                 "OK" if ok else "FAIL", len(audio), len(audio) / SAMPLE_RATE)
+        return {"success": ok, "samples": len(audio),
+                "duration_s": round(len(audio) / SAMPLE_RATE, 2)}
+
+    def unenroll_speaker(self):
+        """Clear speaker enrollment — reverts to RMS+VAD only gating."""
+        self._speaker_enrolled = False
+        self._idle_gate_confirm = 0
+        self._idle_speech_ring = []
+        self._idle_speech_samples = 0
+        log.info("Speaker unenrolled")
+
+    @property
+    def speaker_enrolled(self) -> bool:
+        return self._speaker_enrolled
+
+    # ── ASR text accumulator helpers ────────────────────────────────────────
+
+    def _cancel_accum_flush(self):
+        if self._asr_accum_flush_task and not self._asr_accum_flush_task.done():
+            self._asr_accum_flush_task.cancel()
+        self._asr_accum_flush_task = None
+
+    def _is_short_utterance(self, text: str) -> bool:
+        """True if ASR text looks like a filler / incomplete thought that should be buffered."""
+        return len(text) <= ASR_ACCUM_MAX_CHARS
+
+    def _drain_accum(self, new_text: str = "") -> str:
+        """Pop all buffered ASR segments + new_text, join with comma."""
+        parts = self._asr_accum_texts + ([new_text] if new_text else [])
+        self._asr_accum_texts = []
+        self._cancel_accum_flush()
+        return "，".join(parts)
+
+    async def _accum_flush_timer(self):
+        """Background timer: if no new speech arrives within ASR_ACCUM_FLUSH_S, flush buffer to LLM."""
+        try:
+            await asyncio.sleep(ASR_ACCUM_FLUSH_S)
+            if self._asr_accum_texts and self.state == State.LISTENING:
+                flushed = self._drain_accum()
+                log.info("[Accum] Flush timer fired, sending buffered: '%s'", flushed)
+                self.state = State.THINKING
+                self._turn += 1
+                await self._send({"type": "state", "state": "thinking"})
+                await self._send({"type": "asr", "text": flushed,
+                                  "latency_ms": 0, "turn": self._turn, "accumulated": True})
+                self._track_task(
+                    self._run_pipeline_from_text(flushed, self._turn),
+                    name=f"accum-pipeline-{self._turn}",
+                )
+        except asyncio.CancelledError:
+            pass
+
     def _track_task(self, coro, *, name: str = "") -> asyncio.Task:
         task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
@@ -175,6 +264,12 @@ class ConversationManager:
         self.llm.reset()
         if self._speaking_task and not self._speaking_task.done():
             self._speaking_task.cancel()
+        self._speaker_enrolled = False
+        self._idle_gate_confirm = 0
+        self._idle_speech_ring = []
+        self._idle_speech_samples = 0
+        self._asr_accum_texts = []
+        self._cancel_accum_flush()
         self._idle_since = time.monotonic()
         self._idle_chunk_count = 0
         self._idle_prompted = False
@@ -232,16 +327,45 @@ class ConversationManager:
         rms = _rms(chunk)
 
         if self.state == State.IDLE:
-            if is_speech and rms > 0.02:
-                self.state = State.LISTENING
-                self._audio_buffer = [chunk]
-                self._silence_count = 0
-                self._idle_prompted = False
-                self._idle_goodbye_sent = False
-                self._consecutive_empty_asr = 0
-                self._cancel_speculative_asr()
-                await self._send({"type": "state", "state": "listening"})
+            if is_speech and rms > 0.015:
+                if self._speaker_enrolled:
+                    has_speaker = vad_result.get("is_target_speaker") is not None
+                    if has_speaker:
+                        is_target = vad_result.get("is_target_speaker", False)
+                        if is_target:
+                            self._idle_gate_confirm += 1
+                        self._idle_speech_ring.append(chunk.copy())
+                        self._idle_speech_samples += len(chunk)
+                        while self._idle_speech_samples > SPEAKER_GATE_BUFFER_CHUNKS * CHUNK_SAMPLES:
+                            removed = self._idle_speech_ring.pop(0)
+                            self._idle_speech_samples -= len(removed)
+                        if self._idle_gate_confirm >= SPEAKER_GATE_CONFIRM_CHUNKS:
+                            sim = vad_result.get("speaker_similarity", 0)
+                            log.info("Speaker gate opened (confirm=%d, sim=%.2f)", self._idle_gate_confirm, sim)
+                            self._idle_gate_confirm = 0
+                            self._idle_speech_ring = []
+                            self._idle_speech_samples = 0
+                            self.state = State.LISTENING
+                            self._audio_buffer = [chunk]
+                            self._silence_count = 0
+                            self._idle_prompted = False
+                            self._idle_goodbye_sent = False
+                            self._consecutive_empty_asr = 0
+                            self._cancel_speculative_asr()
+                            await self._send({"type": "state", "state": "listening"})
+                    else:
+                        pass
+                else:
+                    self.state = State.LISTENING
+                    self._audio_buffer = [chunk]
+                    self._silence_count = 0
+                    self._idle_prompted = False
+                    self._idle_goodbye_sent = False
+                    self._consecutive_empty_asr = 0
+                    self._cancel_speculative_asr()
+                    await self._send({"type": "state", "state": "listening"})
             else:
+                self._idle_gate_confirm = 0
                 self._idle_chunk_count += 1
                 if (self._idle_chunk_count >= IDLE_CHECK_INTERVAL_CHUNKS
                         and not self._idle_goodbye_sent
@@ -285,8 +409,7 @@ class ConversationManager:
                          self._speak_log_count, speech_prob, rms,
                          BARGE_IN_VAD_THRESHOLD, BARGE_IN_RMS_THRESHOLD)
 
-            has_speaker_vad = vad_result.get("is_target_speaker") is not None
-            if has_speaker_vad:
+            if self._speaker_enrolled:
                 is_real_speech = (
                     vad_result.get("is_target_speaker", False)
                     and rms > BARGE_IN_RMS_THRESHOLD
@@ -322,7 +445,10 @@ class ConversationManager:
                     await self._on_endpointing()
 
         elif self.state == State.THINKING:
-            if is_speech and rms > 0.02:
+            is_accepted = is_speech and rms > 0.015
+            if self._speaker_enrolled and is_accepted:
+                is_accepted = vad_result.get("is_target_speaker", False)
+            if is_accepted:
                 self._thinking_extra_buffer.append(chunk)
                 self._thinking_has_speech = True
             elif self._thinking_has_speech:
@@ -370,6 +496,7 @@ class ConversationManager:
 
     async def _on_endpointing(self):
         """User finished speaking — start pipeline."""
+        self._cancel_accum_flush()
         self.state = State.THINKING
         self._silence_count = 0
         self._barge_confirm_count = 0
@@ -379,7 +506,8 @@ class ConversationManager:
         await self._send({"type": "state", "state": "thinking"})
 
         audio_duration_ms = len(self._audio_buffer) * CHUNK_MS
-        if self.filler and audio_duration_ms > 1000:
+        has_pending_accum = len(self._asr_accum_texts) > 0
+        if self.filler and audio_duration_ms > 1000 and not has_pending_accum:
             await self._send_filler()
 
         audio = np.concatenate(self._audio_buffer) if self._audio_buffer else np.array([], dtype=np.float32)
@@ -416,6 +544,50 @@ class ConversationManager:
             self.metrics.record_error()
             try:
                 await self._send({"type": "error", "message": str(e), "turn": turn})
+                self._cancel_speaking.clear()
+                self.state = State.SPEAKING
+                await self._send({"type": "state", "state": "speaking"})
+                await self._play_system_tts(self._error_apology, turn)
+            except Exception:
+                pass
+        finally:
+            if self.state == State.THINKING:
+                self.state = State.IDLE
+                self._idle_since = time.monotonic()
+                try:
+                    await self._send({"type": "state", "state": "idle"})
+                except Exception:
+                    pass
+
+    async def _run_pipeline_from_text(self, user_text: str, turn: int):
+        """Lightweight pipeline for accumulated ASR text (no audio, skip ASR/denoise)."""
+        loop = asyncio.get_event_loop()
+        t_start = time.perf_counter()
+        try:
+            self._consecutive_empty_asr = 0
+
+            if any(kw in user_text for kw in self._farewell_keywords):
+                self._session_ending = True
+
+            rag_context = ""
+            try:
+                rag_result = await loop.run_in_executor(None, self.rag.get_context, user_text)
+                rag_context = rag_result["context"]
+            except Exception:
+                pass
+
+            self._cancel_speaking.clear()
+            self._barge_confirm_count = 0
+            self._speak_log_count = 0
+            self.state = State.SPEAKING
+            await self._send({"type": "state", "state": "speaking"})
+            await self._stream_llm_tts(user_text, rag_context, turn, t_start, 0, 0)
+        except asyncio.CancelledError:
+            log.info("[Turn %d] Accum pipeline cancelled", turn)
+        except Exception as e:
+            log.error("[Turn %d] Accum pipeline CRASHED: %s", turn, e, exc_info=True)
+            self.metrics.record_error()
+            try:
                 self._cancel_speaking.clear()
                 self.state = State.SPEAKING
                 await self._send({"type": "state", "state": "speaking"})
@@ -468,11 +640,7 @@ class ConversationManager:
                 await self._play_system_tts(self._asr_empty_text, turn)
                 return
 
-        # 1b. Auto-enroll speaker on first turn
-        if turn == 1 and hasattr(self.vad, 'enroll_speaker') and not self.vad.is_enrolled:
-            if len(audio) >= 8000:
-                self.vad.enroll_speaker(audio)
-                log.info("[Turn %d] Speaker auto-enrolled from first utterance", turn)
+        # 1b. (Speaker enrollment is now button-triggered via enroll_speaker())
 
         # 1c. Merge late speech from THINKING state
         if self._thinking_has_speech and self._thinking_extra_buffer:
@@ -491,6 +659,28 @@ class ConversationManager:
                     log.warning("[Turn %d] Late ASR merge failed: %s", turn, e)
 
         await self._send({"type": "asr", "text": user_text, "latency_ms": round(asr_ms, 1), "turn": turn})
+
+        # ASR accumulator: short utterances get buffered, wait for continuation
+        if user_text and self._is_short_utterance(user_text) and len(self._asr_accum_texts) < ASR_ACCUM_MAX_SEGMENTS:
+            self._asr_accum_texts.append(user_text)
+            log.info("[Turn %d] ASR buffered ('%s', total=%d), returning to LISTENING",
+                     turn, user_text, len(self._asr_accum_texts))
+            self.state = State.LISTENING
+            self._audio_buffer = []
+            self._silence_count = 0
+            await self._send({"type": "state", "state": "listening"})
+            self._cancel_accum_flush()
+            self._asr_accum_flush_task = self._track_task(
+                self._accum_flush_timer(), name=f"accum-flush-{turn}")
+            return
+
+        # Prepend any previously buffered short segments
+        if self._asr_accum_texts:
+            prefix = "，".join(self._asr_accum_texts)
+            user_text = f"{prefix}，{user_text}" if user_text else prefix
+            self._asr_accum_texts = []
+            self._cancel_accum_flush()
+            log.info("[Turn %d] Merged accumulated ASR: '%s'", turn, user_text)
 
         # D3: ASR empty → silent return to LISTENING (first attempts), then recovery
         if not user_text or len(user_text) < 2:

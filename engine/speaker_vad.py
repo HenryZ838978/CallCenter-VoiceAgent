@@ -18,6 +18,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import torchaudio
+if not hasattr(torchaudio, 'list_audio_backends'):
+    torchaudio.list_audio_backends = lambda: ['soundfile']
+
 log = logging.getLogger("voxlabs.svad")
 
 SPEAKER_EMBED_DIM = 192
@@ -57,10 +61,6 @@ class SpeakerAwareVAD:
                 repo_or_dir="snakers4/silero-vad", model="silero_vad", onnx=False,
             )
         self._vad_model.eval()
-
-        import torchaudio
-        if not hasattr(torchaudio, 'list_audio_backends'):
-            torchaudio.list_audio_backends = lambda: ['soundfile']
 
         if not os.environ.get("HF_ENDPOINT"):
             os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"

@@ -384,11 +384,37 @@ async def ws_voice(ws: WebSocket, token: str = Query(default="")):
 
             elif "text" in data and data["text"]:
                 msg = json.loads(data["text"])
-                if msg.get("type") == "text_input":
+                msg_type = msg.get("type")
+
+                if msg_type == "text_input":
                     await cm.handle_text_input(msg["text"])
-                elif msg.get("type") == "manual_barge_in":
+
+                elif msg_type == "manual_barge_in":
                     await cm.handle_barge_in()
-                elif msg.get("type") == "reset":
+
+                elif msg_type == "enroll":
+                    import base64
+                    audio_b64 = msg.get("audio", "")
+                    if audio_b64:
+                        audio_bytes = base64.b64decode(audio_b64)
+                        audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                        result = cm.enroll_speaker(audio_np)
+                        await send_fn({"type": "enroll_ack", **result})
+                        await send_fn({"type": "shield_status",
+                                       "speaker_gate": cm.speaker_enrolled,
+                                       "speaker_vad": vad_type == "speaker"})
+                    else:
+                        await send_fn({"type": "enroll_ack", "success": False,
+                                       "reason": "no_audio"})
+
+                elif msg_type == "unenroll":
+                    cm.unenroll_speaker()
+                    await send_fn({"type": "unenroll_ack", "success": True})
+                    await send_fn({"type": "shield_status",
+                                   "speaker_gate": False,
+                                   "speaker_vad": vad_type == "speaker"})
+
+                elif msg_type == "reset":
                     cm.reset()
                     await send_fn({"type": "reset_ack"})
 
