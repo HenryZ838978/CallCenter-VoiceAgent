@@ -937,6 +937,10 @@ class ConversationManager:
                     await self._send({"_audio": raw})
                     await asyncio.sleep(0.01)
 
+                if sentence_count >= 3:
+                    log.info("[Turn %d] Sentence cap (3) reached, stopping", turn)
+                    break
+
             await self._send({
                 "type": "llm", "text": full_response,
                 "turn": turn, "sentences": sentence_count,

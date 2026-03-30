@@ -65,7 +65,7 @@ class VLLMChat:
 
         resp = self._client.chat.completions.create(
             model=self._model, messages=messages,
-            max_tokens=120, temperature=0.85, top_p=0.9, extra_body=extra_body,
+            max_tokens=80, temperature=0.85, top_p=0.9, extra_body=extra_body,
         )
         latency = (time.perf_counter() - t0) * 1000
         text = self._clean(resp.choices[0].message.content or "")
@@ -87,7 +87,7 @@ class VLLMChat:
 
         stream = self._client.chat.completions.create(
             model=self._model, messages=messages,
-            max_tokens=120, temperature=0.85, top_p=0.9,
+            max_tokens=80, temperature=0.85, top_p=0.9,
             stream=True, extra_body=extra_body,
         )
 

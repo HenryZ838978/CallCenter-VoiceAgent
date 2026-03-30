@@ -25,3 +25,5 @@ macos-app/
 mac_client.py
 start_a10.sh
 static/VoxLabsAgent.tar.gz
+start_demo.sh
+ab_test_embedding.py
