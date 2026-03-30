@@ -23,7 +23,7 @@
 <table><tr><td align="center">
 <br>
 
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID_HERE
+https://github.com/user-attachments/assets/f1619b20-a3eb-4820-afc1-0556123638bb
 
 **↑ 实机演示：iPad PTT → 458ms 首响 → 流式语音克隆回复**
 
