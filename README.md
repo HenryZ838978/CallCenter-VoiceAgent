@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎙️ Full-Duplex Voice Agent
+# 🎙️ 500ms-Voice Agent
 
 ### ASR → RAG → LLM → TTS &nbsp;·&nbsp; Sub-500ms First Response &nbsp;·&nbsp; Voice Cloning
 
