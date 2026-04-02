@@ -22,8 +22,10 @@
 <!-- 🎬 Demo Video Placeholder -->
 <table><tr><td align="center">
 <br>
+  
+<img width="1750" height="1714" alt="超低延迟" src="https://github.com/user-attachments/assets/1c2dede4-e1b7-4cac-9f5c-59ebabfec039" />
 
-![语音助教](https://github.com/user-attachments/assets/b9a67414-8098-494a-933b-38f4a2ad2c66)
+
 
 
 **↑ 实机演示：PTT模式 → 458ms 首响 → 流式语音克隆回复**
