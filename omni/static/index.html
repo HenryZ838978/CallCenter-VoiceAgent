@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Omni Voice Agent — MiniCPM-o 4.5</title>
+<style>
+:root {
+  --bg: #0a0e1a; --surface: #111827; --surface2: #1a2236;
+  --border: #2a3350; --text: #e2e8f0; --dim: #8892a8;
+  --accent: #a78bfa; --green: #34d399; --red: #f87171;
+  --yellow: #fbbf24; --purple: #6c8cff; --cyan: #22d3ee;
+  --omni: #a78bfa; --pipeline: #6c8cff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+.app { display: grid; grid-template-columns: 1fr 400px; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+.header { grid-column: 1/-1; padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--surface); }
+.header h1 { font-size: 20px; background: linear-gradient(135deg, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header .tags { display: flex; gap: 8px; }
+.tag { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.tag-model { background: rgba(167,139,250,.2); color: var(--omni); }
+.tag-e2e { background: rgba(52,211,153,.2); color: var(--green); }
+.tag-arch { background: rgba(34,211,238,.2); color: var(--cyan); font-weight: 400; }
+.header .right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--dim); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; }
+.status-dot.connected { background: var(--green); }
+.status-dot.active { background: var(--red); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .5; } }
+.state-badge { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.state-idle { background: rgba(136,146,168,.15); color: var(--dim); }
+.state-listening { background: rgba(52,211,153,.15); color: var(--green); }
+.state-thinking { background: rgba(167,139,250,.15); color: var(--omni); }
+.state-speaking { background: rgba(108,140,255,.15); color: var(--purple); }
+
+.main { display: flex; flex-direction: column; overflow: hidden; }
+.chat-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; animation: fadeIn .2s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+.msg.user { align-self: flex-end; background: var(--omni); color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant { align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.msg.system { align-self: center; background: none; color: var(--dim); font-size: 12px; padding: 2px 12px; }
+.msg .meta { font-size: 11px; color: var(--dim); margin-top: 3px; }
+.msg.user .meta { color: rgba(255,255,255,.6); }
+
+.controls { padding: 14px 24px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 12px; align-items: center; }
+.btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.btn-call { background: var(--green); color: #000; }
+.btn-call.active { background: var(--red); color: #fff; }
+.btn-reset { background: var(--surface2); color: var(--dim); border: 1px solid var(--border); }
+.vu-meter { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; flex: 1; max-width: 120px; }
+.vu-meter .bar { height: 100%; background: var(--green); width: 0%; transition: width 50ms; }
+
+.sidebar { border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; }
+.sb { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.sb h3 { font-size: 11px; text-transform: uppercase; color: var(--dim); letter-spacing: 1px; margin-bottom: 8px; }
+.row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
+.row .label { color: var(--dim); }
+.row .value { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.metric-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-green { background: rgba(52,211,153,.15); color: var(--green); }
+.badge-yellow { background: rgba(251,191,36,.15); color: var(--yellow); }
+.badge-red { background: rgba(248,113,113,.15); color: var(--red); }
+
+.compare-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.compare-row { margin-bottom: 10px; }
+.compare-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.compare-label .dot { width: 6px; height: 6px; border-radius: 50%; }
+.compare-bar-track { height: 22px; background: rgba(255,255,255,.03); border-radius: 4px; position: relative; overflow: hidden; }
+.compare-bar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 6px; font-size: 10px; font-weight: 700; color: rgba(0,0,0,.8); transition: width .4s ease; position: absolute; top: 0; left: 0; }
+.compare-bar.pipeline { background: linear-gradient(90deg, var(--cyan), var(--purple), var(--purple), var(--yellow)); opacity: .5; }
+.compare-bar.omni { background: linear-gradient(90deg, var(--omni), #c084fc); }
+.seg-bar { display: flex; gap: 1px; height: 18px; border-radius: 3px; overflow: hidden; }
+.seg { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: rgba(0,0,0,.8); min-width: 16px; }
+.delta-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.delta-slower { background: rgba(248,113,113,.12); color: var(--red); }
+.delta-faster { background: rgba(52,211,153,.12); color: var(--green); }
+
+.arch-diagram { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--dim); }
+.arch-diagram .arch-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.arch-diagram .flow { display: flex; align-items: center; gap: 4px; margin: 4px 0; flex-wrap: wrap; }
+.arch-diagram .node { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.arch-diagram .arrow { color: var(--dim); font-size: 10px; }
+.node-vad { background: rgba(52,211,153,.15); color: var(--green); }
+.node-asr { background: rgba(34,211,238,.15); color: var(--cyan); }
+.node-rag { background: rgba(167,139,250,.15); color: var(--omni); }
+.node-llm { background: rgba(108,140,255,.15); color: var(--purple); }
+.node-tts { background: rgba(251,191,36,.15); color: var(--yellow); }
+.node-omni { background: rgba(167,139,250,.2); color: var(--omni); border: 1px solid rgba(167,139,250,.3); }
+
+.footer { grid-column: 1/-1; padding: 6px 24px; font-size: 11px; color: var(--dim); text-align: center; border-top: 1px solid var(--border); background: var(--surface); }
+@media (max-width: 900px) { .app { grid-template-columns: 1fr; } .sidebar { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Hybrid Voice Agent</h1>
+    <div class="tags">
+      <span class="tag tag-model">MiniCPM-o 4.5 AWQ</span>
+      <span class="tag tag-e2e">vLLM + VoxCPM</span>
+      <span class="tag tag-arch">audio-in audio-out</span>
+    </div>
+    <div class="right">
+      <span class="state-badge state-idle" id="stateBadge">IDLE</span>
+      <span><span class="status-dot" id="statusDot"></span> <span id="statusText">Disconnected</span></span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="chat-area" id="chat"></div>
+    <div class="controls">
+      <button class="btn btn-call" id="btnCall" onclick="toggleCall()">Start Call</button>
+      <div class="vu-meter"><div class="bar" id="vuBar"></div></div>
+      <span style="font-size:12px;color:var(--dim)" id="micLabel">Mic off</span>
+      <span style="font-size:11px;color:var(--dim);margin-left:10px;font-family:'SF Mono','Fira Code',monospace" id="bufLabel"></span>
+      <span style="flex:1"></span>
+      <button class="btn btn-reset" onclick="resetSession()">Reset</button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sb">
+      <h3>Head-to-Head: First Audio Delay</h3>
+      <div class="compare-box">
+        <div class="compare-row">
+          <div class="compare-label"><span class="dot" style="background:var(--pipeline)"></span> Pipeline (voiceagent v2)</div>
+          <div class="compare-bar-track">
+            <div class="compare-bar pipeline" id="barPipeline" style="width:22.9%">458ms</div>
+          </div>
+          <div class="seg-bar" style="margin-top:3px">
+            <div class="seg" style="background:var(--cyan);width:25.5%" title="ASR 117ms">117</div>
+            <div class="seg" style="background:rgba(167,139,250,.6);width:1%" title="RAG 4ms"></div>
+            <div class="seg" style="background:var(--purple);width:35.6%" title="LLM 163ms">163</div>
+            <div class="seg" style="background:var(--yellow);width:38%" title="TTS 174ms">174</div>
+          </div>
+        </div>
+        <div class="compare-row" style="margin-bottom:0">
+          <div class="compare-label"><span class="dot" style="background:var(--omni)"></span> Omni (MiniCPM-o 4.5)</div>
+          <div class="compare-bar-track">
+            <div class="compare-bar omni" id="barOmni" style="width:10%">--</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:4px">
+        <span class="delta-badge delta-slower" id="deltaBadge">Waiting for data...</span>
+      </div>
+    </div>
+
+    <div class="sb">
+      <h3>Current Turn Metrics</h3>
+      <div class="row"><span class="label">LLM TTFT</span><span class="value" id="valLLM">--</span></div>
+      <div class="row"><span class="label">TTS TTFA</span><span class="value" id="valTTS">--</span></div>
+      <div class="row"><span class="label">Total</span><span class="value" id="valTotal">--</span></div>
+      <div class="row"><span class="label"><b>First Audio</b></span><span class="value" id="valFR">--</span></div>
+    </div>
+
+    <div class="sb">
+      <h3>Architecture Comparison</h3>
+      <div class="arch-diagram">
+        <div class="arch-title" style="color:var(--pipeline)">Pipeline v2 (voiceagent)</div>
+        <div class="flow">
+          <span class="node node-vad">VAD</span><span class="arrow">&rarr;</span>
+          <span class="node node-asr">ASR</span><span class="arrow">&rarr;</span>
+          <span class="node node-rag">RAG</span><span class="arrow">&rarr;</span>
+          <span class="node node-llm">LLM</span><span class="arrow">&rarr;</span>
+          <span class="node node-tts">TTS</span>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:4px 0 8px">5 models, 2 GPUs, ~17.6 GB, 454ms</div>
+        <div class="arch-title" style="color:var(--omni)">Hybrid (this system)</div>
+        <div class="flow">
+          <span class="node node-vad">VAD</span><span class="arrow">&rarr;</span>
+          <span class="node node-omni">vLLM Omni AWQ</span><span class="arrow">&rarr;</span>
+          <span class="node node-tts">VoxCPM</span>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:4px">2 models, 2 GPUs, ~17.5 GB, ~212ms</div>
+      </div>
+    </div>
+
+    <div class="sb">
+      <h3>Session</h3>
+      <div class="row"><span class="label">Turns</span><span class="value" id="turnCount">0</span></div>
+      <div class="row"><span class="label">Avg TTFA</span><span class="value" id="avgTTFA">--</span></div>
+      <div class="row"><span class="label">Voice Ref</span><span class="value" id="voiceRef">--</span></div>
+    </div>
+
+    <div class="sb">
+      <h3>Network Buffer</h3>
+      <div class="row"><span class="label">Status</span><span class="value" id="bufState">idle</span></div>
+      <div class="row"><span class="label">Buffered</span><span class="value" id="bufLevel">--</span></div>
+      <div class="row"><span class="label">Target</span><span class="value" id="bufTarget">150ms</span></div>
+      <div class="row"><span class="label">Underruns</span><span class="value" id="bufUR">0</span></div>
+    </div>
+
+    <div class="sb">
+      <h3>Model Info</h3>
+      <div id="modelInfo">
+        <div class="row"><span class="label">Model</span><span class="value">MiniCPM-o 4.5 (9B)</span></div>
+        <div class="row"><span class="label">Backbone</span><span class="value">Qwen3-8B</span></div>
+        <div class="row"><span class="label">ASR</span><span class="value">Whisper-medium</span></div>
+        <div class="row"><span class="label">TTS</span><span class="value">CosyVoice2</span></div>
+        <div class="row"><span class="label">Precision</span><span class="value" id="precisionInfo">bf16</span></div>
+        <div class="row"><span class="label">Output SR</span><span class="value">24 kHz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">Omni Voice Agent &mdash; MiniCPM-o 4.5 end-to-end &mdash; Audio in &rarr; Single Model &rarr; Audio out</div>
+</div>
+
+<script>
+var SR_IN = 16000, SR_OUT = 44100, CHUNK = 512;
+var ws = null, mediaStream = null, capCtx = null, workletNode = null;
+var calling = false, agentState = 'idle', ttsPlaying = false;
+var turns = 0, ttfaSum = 0;
+var playableTurn = 0;  // only play audio from this turn
+var PIPELINE_REF = 458;
+var MAX_BAR = 2000;
+
+function $(id) { return document.getElementById(id); }
+
+function addMsg(role, text, meta) {
+  var chat = $('chat'), div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = text + (meta ? '<div class="meta">' + meta + '</div>' : '');
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function setStatus(cls, text) {
+  $('statusDot').className = 'status-dot ' + cls;
+  $('statusText').textContent = text;
+}
+
+function setAgentState(state) {
+  agentState = state;
+  var b = $('stateBadge');
+  b.className = 'state-badge state-' + state;
+  b.textContent = state.toUpperCase();
+}
+
+function updateComparison(ttfa) {
+  var pPct = Math.min(100, (PIPELINE_REF / MAX_BAR) * 100);
+  var oPct = Math.min(100, (ttfa / MAX_BAR) * 100);
+  $('barPipeline').style.width = pPct + '%';
+  $('barPipeline').textContent = PIPELINE_REF + 'ms';
+  $('barOmni').style.width = oPct + '%';
+  $('barOmni').textContent = Math.round(ttfa) + 'ms';
+
+  var delta = ttfa - PIPELINE_REF;
+  var db = $('deltaBadge');
+  if (delta > 0) {
+    db.className = 'delta-badge delta-slower';
+    db.textContent = 'Omni +' + Math.round(delta) + 'ms slower (' + (ttfa / PIPELINE_REF).toFixed(1) + 'x)';
+  } else {
+    db.className = 'delta-badge delta-faster';
+    db.textContent = 'Omni ' + Math.round(delta) + 'ms faster';
+  }
+}
+
+function updateMetrics(firstAudio, total, llm, tts) {
+  $('valLLM').textContent = Math.round(llm) + 'ms';
+  $('valTTS').textContent = Math.round(tts) + 'ms';
+  $('valTotal').textContent = Math.round(total) + 'ms';
+  var cls = firstAudio < 300 ? 'badge-green' : firstAudio < 500 ? 'badge-yellow' : 'badge-red';
+  $('valFR').innerHTML = '<span class="metric-badge ' + cls + '">' + Math.round(firstAudio) + 'ms</span>';
+
+  turns++;
+  ttfaSum += ttfa;
+  $('turnCount').textContent = turns;
+  $('avgTTFA').textContent = Math.round(ttfaSum / turns) + 'ms';
+  updateComparison(firstAudio);
+}
+
+/* ---- WebSocket ---- */
+function connectWS() {
+  var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(proto + '://' + location.host + '/ws/voice');
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = function() { setStatus('connected', 'Connected'); };
+  ws.onclose = function() { setStatus('', 'Disconnected'); ws = null; };
+  ws.onerror = function() { setStatus('', 'Error'); };
+
+  ws.onmessage = function(evt) {
+    if (evt.data instanceof ArrayBuffer) {
+      if (playableTurn > 0) {
+        ttsPlaying = true;
+        playAudio(evt.data);
+      }
+      return;
+    }
+    var msg = JSON.parse(evt.data);
+    switch (msg.type) {
+      case 'state':
+        setAgentState(msg.state);
+        if (msg.state === 'speaking') { ttsPlaying = true; if (playableTurn === 0) playableTurn = 1; }
+        if (msg.state === 'idle' || msg.state === 'listening') {
+          ttsPlaying = false;
+        }
+        break;
+      case 'processing':
+        addMsg('user', '[Audio ' + msg.audio_duration_s.toFixed(1) + 's]', 'captured by VAD');
+        break;
+      case 'audio_start':
+        playableTurn = msg.turn || 1;
+        ttsPlaying = true;
+        if (playerNode) playerNode.port.postMessage('start');
+        break;
+      case 'response':
+        var fa = msg.first_audio_ms || msg.ttfa_ms || 0;
+        var llm = msg.llm_ttft_ms || 0;
+        var tts = msg.tts_ttfa_ms || 0;
+        
+        addMsg('assistant', msg.text,
+          'LLM ' + Math.round(llm) + 'ms + TTS ' + Math.round(tts) + 'ms = ' + Math.round(fa) + 'ms'
+          + (msg.rag_ms > 0 ? ' | RAG ' + Math.round(msg.rag_ms) + 'ms' : '')
+          + (msg.history_len ? ' | ctx ' + msg.history_len : ''));
+        updateMetrics(fa, msg.total_ms || 0, llm, tts);
+        break;
+      case 'rag':
+        break;
+      case 'audio_end':
+        if (playerNode) playerNode.port.postMessage('drain');
+        break;
+      case 'barge_in':
+        playableTurn = 0;
+        addMsg('system', 'Interrupted');
+        stopPlayback();
+        break;
+    }
+  };
+}
+
+/* ---- Audio Playback (44.1 kHz, AudioWorklet + Adaptive Jitter Buffer) ---- */
+var playCtx = null, playerNode = null, playerReady = false;
+
+function initPlayer() {
+  if (playerReady) return Promise.resolve();
+  playCtx = new AudioContext({ sampleRate: SR_OUT });
+  var code = [
+    'class Q extends AudioWorkletProcessor{',
+    'constructor(){super();var t=this;',
+    't.q=[];t.c=null;t.p=0;t.buf=0;',
+    't.st=0;t.drn=false;',
+    't.tMs=150;t.tgt=Math.round(150*sampleRate/1000);',
+    't.ur=0;t.gd=0;t.fc=0;',
+    't.rep=Math.round(0.2*sampleRate/128);',
+    't.port.onmessage=function(e){',
+    'if(e.data==="flush"){t.q=[];t.c=null;t.p=0;t.buf=0;t.st=0;t.drn=false;',
+    't.port.postMessage({s:0,ms:0,tgt:t.tMs,ur:t.ur});return;}',
+    'if(e.data==="start"){if(t.st===0)t.st=1;t.drn=false;return;}',
+    'if(e.data==="drain"){t.drn=true;if(t.st===1&&t.buf>0)t.st=2;return;}',
+    'var f=new Float32Array(e.data);t.q.push(f);t.buf+=f.length;',
+    '};}',
+    'process(i,o){var out=o[0][0],len=out.length;this.fc++;',
+    'if(this.st===0){for(var j=0;j<len;j++)out[j]=0;return true;}',
+    'if(this.st===1){for(var j=0;j<len;j++)out[j]=0;',
+    'if(this.buf>=this.tgt)this.st=2;this._r();return true;}',
+    'for(var j=0;j<len;j++){if(!this.c||this.p>=this.c.length){',
+    'if(this.q.length){this.c=this.q.shift();this.buf-=this.c.length;this.p=0;}',
+    'else{this.c=null;this.p=0;for(;j<len;j++)out[j]=0;',
+    'if(this.drn){this.st=0;this.drn=false;this.gd++;',
+    'if(this.gd>=3&&this.tMs>50){this.tMs=Math.max(50,this.tMs-25);',
+    'this.tgt=Math.round(this.tMs*sampleRate/1000);this.gd=0;}}',
+    'else{this.ur++;this.gd=0;this.tMs=Math.min(400,this.tMs+50);',
+    'this.tgt=Math.round(this.tMs*sampleRate/1000);}',
+    'this._r();return true;}}out[j]=this.c[this.p++];}this._r();return true;}',
+    '_r(){if(this.fc%this.rep!==0)return;this.port.postMessage(',
+    '{s:this.st,ms:Math.round(this.buf/sampleRate*1000),tgt:this.tMs,ur:this.ur});}',
+    '}registerProcessor("q",Q);'
+  ].join('\n');
+  return playCtx.audioWorklet.addModule(
+    URL.createObjectURL(new Blob([code], {type: 'application/javascript'}))
+  ).then(function() {
+    playerNode = new AudioWorkletNode(playCtx, 'q');
+    playerNode.port.onmessage = function(e) {
+      var d = e.data;
+      if (!d || typeof d.s === 'undefined') return;
+      var names = ['idle', 'buffering', 'playing'];
+      $('bufState').textContent = names[d.s] || 'idle';
+      $('bufLevel').textContent = d.ms + 'ms';
+      $('bufTarget').textContent = d.tgt + 'ms';
+      $('bufUR').textContent = d.ur;
+      if (d.s === 1) $('bufLabel').textContent = 'Buf ' + d.ms + '/' + d.tgt + 'ms';
+      else if (d.s === 2) $('bufLabel').textContent = 'Buf ' + d.ms + 'ms';
+      else $('bufLabel').textContent = '';
+    };
+    playerNode.connect(playCtx.destination);
+    return playCtx.resume();
+  }).then(function() { playerReady = true; });
+}
+
+function playAudio(buffer) {
+  if (!playerReady) return;
+  var i16 = new Int16Array(buffer);
+  var f32 = new Float32Array(i16.length);
+  for (var i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  playerNode.port.postMessage(f32);
+}
+
+function stopPlayback() {
+  if (playerNode) playerNode.port.postMessage('flush');
+  ttsPlaying = false;
+  $('bufLabel').textContent = '';
+}
+
+/* ---- Microphone Capture ---- */
+function createCaptureWorklet() {
+  var code =
+    'class P extends AudioWorkletProcessor{constructor(){super();this.buf=[];}' +
+    'process(inputs){var ch=inputs[0]&&inputs[0][0];if(!ch)return true;' +
+    'for(var i=0;i<ch.length;i++)this.buf.push(Math.max(-1,Math.min(1,ch[i])));' +
+    'while(this.buf.length>=' + CHUNK + '){var c=this.buf.splice(0,' + CHUNK + ');' +
+    'var a=new Int16Array(c.length);for(var i=0;i<c.length;i++)a[i]=c[i]*32767;' +
+    'this.port.postMessage(a.buffer,[a.buffer]);}return true;}}' +
+    'registerProcessor("p",P);';
+  return URL.createObjectURL(new Blob([code], {type: 'application/javascript'}));
+}
+
+function toggleCall() {
+  var btn = $('btnCall');
+  if (!calling) {
+    initPlayer().then(function() {
+      if (!ws || ws.readyState !== 1) connectWS();
+      return new Promise(function(r) {
+        var iv = setInterval(function() { if (ws && ws.readyState === 1) { clearInterval(iv); r(); } }, 100);
+      });
+    }).then(function() {
+      return navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: SR_IN, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+    }).then(function(stream) {
+      mediaStream = stream;
+      capCtx = new AudioContext({ sampleRate: SR_IN });
+      return capCtx.audioWorklet.addModule(createCaptureWorklet()).then(function() {
+        var src = capCtx.createMediaStreamSource(stream);
+        workletNode = new AudioWorkletNode(capCtx, 'p');
+        workletNode.port.onmessage = function(e) {
+          if (ws && ws.readyState === 1) ws.send(e.data);
+          var arr = new Int16Array(e.data);
+          var sum = 0; for (var i = 0; i < arr.length; i++) sum += Math.abs(arr[i]);
+          $('vuBar').style.width = Math.min(100, (sum / arr.length / 32768) * 300) + '%';
+        };
+        src.connect(workletNode);
+        workletNode.connect(capCtx.destination);
+        calling = true;
+        btn.textContent = 'End Call'; btn.classList.add('active');
+        setStatus('active', 'In Call'); $('micLabel').textContent = 'Mic on';
+      });
+    }).catch(function(e) { addMsg('system', 'Mic error: ' + e.message); });
+  } else {
+    if (mediaStream) { mediaStream.getTracks().forEach(function(t) { t.stop(); }); mediaStream = null; }
+    if (workletNode) { workletNode.disconnect(); workletNode = null; }
+    if (capCtx) { capCtx.close(); capCtx = null; }
+    calling = false;
+    btn.textContent = 'Start Call'; btn.classList.remove('active');
+    setStatus('connected', 'Connected'); $('micLabel').textContent = 'Mic off';
+    $('vuBar').style.width = '0%';
+  }
+}
+
+function resetSession() {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'reset' }));
+  turns = 0; ttfaSum = 0;
+  $('turnCount').textContent = '0'; $('avgTTFA').textContent = '--';
+  $('valTTFA').textContent = '--'; $('valTotal').textContent = '--';
+  $('valChunks').textContent = '--'; $('valFR').textContent = '--';
+  $('barOmni').style.width = '10%'; $('barOmni').textContent = '--';
+  $('deltaBadge').className = 'delta-badge delta-slower';
+  $('deltaBadge').textContent = 'Waiting for data...';
+  addMsg('system', 'Session reset');
+}
+
+window.addEventListener('load', function() {
+  connectWS();
+  fetch('/api/info').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.load_in_4bit) $('precisionInfo').textContent = 'int4 (bnb)';
+    if (d.voice_ref) $('voiceRef').textContent = d.voice_ref.split('/').pop();
+  }).catch(function() {});
+});
+</script>
+</body>
+</html>
