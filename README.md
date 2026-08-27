@@ -1,43 +1,54 @@
 <div align="center">
 
-# 🎙️ 500ms-Voice Agent
+# 🎙️ VoiceAgent-600ms
 
-### ASR → RAG → LLM → TTS &nbsp;·&nbsp; Sub-500ms First Response &nbsp;·&nbsp; Voice Cloning
+### Voice · ASR · TTS · LLM · Infra · Posttraining
 
-<br>
-
-[![Pipeline Latency](https://img.shields.io/badge/Pipeline_Latency-458ms-00c853?style=for-the-badge&logo=speedtest&logoColor=white)](/)
-[![Barge-in](https://img.shields.io/badge/Barge--in-160ms-2979ff?style=for-the-badge&logo=bolt&logoColor=white)](/)
-[![ASR CER](https://img.shields.io/badge/ASR_CER-2.89%25-ff6f00?style=for-the-badge&logo=microphone&logoColor=white)](/)
-[![RTF](https://img.shields.io/badge/TTS_RTF-0.08x-9c27b0?style=for-the-badge&logo=waveform&logoColor=white)](/)
-[![Version](https://img.shields.io/badge/v3.1-Stable-7c4dff?style=for-the-badge)](/)
+**一个仓库,两条路线:级联 Pipeline(主力)与端到端 Omni(前沿)— 全部低于 600ms 感知预算**
 
 <br>
 
-> **800ms 是语音对话的图灵测试门槛** — 超过这个延迟，人类会感知到"在和机器说话"。
-> 本项目通过四重工程极致优化，实现 **458ms 首响**，远低于这个门槛。
+[![Pipeline](https://img.shields.io/badge/Cascade_Pipeline-458ms-00c853?style=for-the-badge&logo=speedtest&logoColor=white)](/)
+[![Omni](https://img.shields.io/badge/E2E_Omni-250ms-2979ff?style=for-the-badge&logo=bolt&logoColor=white)](/)
+[![Barge-in](https://img.shields.io/badge/Barge--in-160ms-ff6f00?style=for-the-badge&logo=bolt&logoColor=white)](/)
+[![ASR CER](https://img.shields.io/badge/ASR_CER-2.89%25-9c27b0?style=for-the-badge&logo=microphone&logoColor=white)](/)
+[![License](https://img.shields.io/badge/Apache-2.0-7c4dff?style=for-the-badge)](/)
 
 <br>
 
-<!-- 🎬 Demo Video Placeholder -->
-<table><tr><td align="center">
-<br>
-  
-<img width="1750" height="1714" alt="超低延迟" src="https://github.com/user-attachments/assets/1c2dede4-e1b7-4cac-9f5c-59ebabfec039" />
-
-
-
-
-**↑ 实机演示：PTT模式 → 458ms 首响 → 流式语音克隆回复**
-
-<br>
-</td></tr></table>
+> **800ms 是语音对话的图灵测试门槛**——超过它,人类会感知到"在和机器说话"。
+> 本项目以 **600ms 为工程预算线**,在同一套工程底座上实现了两条架构路线,实测全部远低于预算:
+> 级联 Pipeline **458ms** 首响,端到端 Omni **250ms** 首帧音频。
 
 </div>
 
 ---
 
-## ⚡ 为什么快？— 四重极致工程优化
+## 🗺️ 两条架构路线
+
+```
+路线 A · 级联 Pipeline (仓库根目录, 主力生产版本)
+  VAD → ASR(FireRedASR2) → RAG(bge+FAISS) → LLM(Qwen3-14B/vLLM) → TTS(VoxCPM 流式)
+  458ms 首响 · 组件全部可独立替换 · 话术定制 SFT ~$20
+
+路线 B · 端到端 Omni (omni/ 目录, 延迟前沿实验线)
+  VAD → MiniCPM-o 4.5 AWQ (音频原生理解, vLLM) → TTS(VoxCPM 流式)
+  250ms 首帧 · 无 ASR 误差传播 · 10.5GB VRAM
+```
+
+**为什么主力是级联而不是更快的 Omni?** 可控性。级联的每个组件可独立替换/升级,换音色是小时级语音克隆,换话术是 ~$20 的 LoRA SFT;Omni 路线换话术要动整个多模态模型。延迟两者都已低于人类感知门槛,此时**可控性 > 更低的延迟**。Omni 线作为延迟前沿保留在 [omni/](omni/),完整文档见 [omni/README.md](omni/README.md)。
+
+### 同硬件三方案实测对比 (RTX 4090)
+
+| 方案 | 首响延迟 | 打断精度 | 换音色 | 换话术 |
+|:---:|:---:|:---:|:---:|:---:|
+| **🏆 级联 Pipeline (主力)** | **458ms** | **160ms** | 语音克隆 · 小时级 | SFT · ~$20 |
+| 端到端 Omni ([omni/](omni/)) | **250ms** | 160ms | 语音克隆 | Omni SFT |
+| 纯 Omni (raw transformers) | 1666ms ❌ | 模型原生 | 重训整个模型 | ~$5000+ |
+
+---
+
+## ⚡ 路线 A:级联 Pipeline 为什么快
 
 ```
                           用户说完
@@ -51,146 +62,59 @@
           └────┬────┘  └────┬─────┘  │            │
                │            │        │            │
                ▼            ▼        │            │
-          ┌──────────────────────┐   │            │
-          │  🧠 LLM (Streaming)  │   │  ⏱️ 458ms  │
-          │  Qwen3-14B via vLLM  │   │  总延迟    │
+          ┌──────────────────────┐   │  ⏱️ 458ms  │
+          │  🧠 LLM (Streaming)  │   │  总延迟    │
+          │  Qwen3-14B via vLLM  │   │            │
           │  ~163ms to 1st token │   │            │
           └──────────┬───────────┘   │            │
-                     │               │            │
                      ▼               │            │
           ┌──────────────────────┐   │            │
-          │  🔊 TTS (Streaming)   │   │            │
-          │  VoxCPM via nanovllm  │   │            │
-          │  ~174ms to 1st chunk  │   │            │
+          │  🔊 TTS (Streaming)  │   │            │
+          │  VoxCPM via nanovllm │   │            │
+          │  ~174ms to 1st chunk │   │            │
           └──────────────────────┘   │            │
-                     │               │            │
-                     ▼               ▼            ▼
+                     │               ▼            ▼
                用户听到第一个音节 ◄──────────────┘
 ```
 
-<table>
-<tr>
-<td width="25%" align="center">
+### 延迟实测
 
-### 🎤 ASR 加速
-**FireRedASR2-AED**<br>
-1.15B 参数 · CER 2.89%<br>
-20+ 方言 · 噪声鲁棒<br>
-<br>
-<code>~200ms</code>
+| 组件 | RTX 4090 | RTX 5090 | RTX 4080S |
+|---|---|---|---|
+| 🎤 ASR (FireRedASR2-AED, CER 2.89%) | **200ms** | 93ms | 130ms |
+| 📚 RAG (bge-small + FAISS) | **4ms** | 3ms | 4ms |
+| 🧠 LLM (Qwen3-14B-AWQ, vLLM) | **163ms** | 130ms | 225ms |
+| 🔊 TTS (VoxCPM / nanovllm, 流式) | **174ms** | 138ms | 115ms |
+| 🚀 **Pipeline 总计** | **458ms** | **342ms** | **470ms** |
 
-</td>
-<td width="25%" align="center">
-
-### 🧠 LLM 加速
-**vLLM 0.16**<br>
-PagedAttention · AWQ 量化<br>
-Continuous Batching<br>
-<br>
-<code>~163ms TTFT</code>
-
-</td>
-<td width="25%" align="center">
-
-### 🔊 TTS 加速
-**nanovllm-voxcpm**<br>
-CUDA Graph · torch.compile<br>
-逐 chunk 流式 · 语音克隆<br>
-<br>
-<code>~174ms TTFA</code>
-
-</td>
-<td width="25%" align="center">
-
-### 📚 RAG 加速
-**bge-small + FAISS**<br>
-512d embedding · IndexFlatIP<br>
-59 docs 精确搜索<br>
-<br>
-<code>~4ms</code>
-
-</td>
-</tr>
-</table>
-
----
-
-## 📊 同硬件三方案对比
-
-> 在同一台 RTX 4090 上实测，Pipeline 方案综合最优：
-
-| 方案 | 首响延迟 | 打断精度 | 换音色 | 换话术 |
-|:---:|:---:|:---:|:---:|:---:|
-| **🏆 Pipeline (本项目)** | **458ms** | **160ms** | 语音克隆 · 小时级 | SFT · ~$20 |
-| Hybrid (Omni + TTS) | ~250ms | 160ms | 语音克隆 | Omni SFT |
-| 纯 Omni (raw transformers) | 1666ms ❌ | 模型原生 | 重训整个模型 | ~$5000+ |
-
-<br>
-
-## 🔬 延迟实测
-
-<table>
-<tr><th>组件</th><th>RTX 4090</th><th>RTX 5090</th><th>RTX 4080S</th></tr>
-<tr><td>🎤 ASR</td><td><b>200ms</b></td><td>93ms</td><td>130ms</td></tr>
-<tr><td>📚 RAG</td><td><b>4ms</b></td><td>3ms</td><td>4ms</td></tr>
-<tr><td>🧠 LLM</td><td><b>163ms</b></td><td>130ms</td><td>225ms</td></tr>
-<tr><td>🔊 TTS</td><td><b>174ms</b></td><td>138ms</td><td>115ms</td></tr>
-<tr><td><b>🚀 Pipeline</b></td><td><b>458ms</b></td><td><b>342ms</b></td><td><b>470ms</b></td></tr>
-</table>
-
----
-
-## 🏗️ 系统架构
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  客户端 — 浏览器 / 原生 macOS·iPad App / WebRTC                        │
-│  麦克风 → PCM 16kHz → 服务端  |  服务端 → PCM 44.1kHz (流式) → 扬声器  │
-└────────────────────────────┬────────────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  ConversationManager v3.1 — 状态机 + PTT Demo Mode                     │
-│                                                                         │
-│  ┌─────┐  ┌──────────┐  ┌─────────┐  ┌─────┐  ┌───────┐  ┌─────────┐ │
-│  │ VAD │→ │Turn 检测  │→ │  ASR    │→ │ RAG │→ │  LLM  │→ │TTS 流式 │ │
-│  │Silero│  │Smart Turn│  │FireRed  │  │ bge │  │Qwen3  │  │ VoxCPM  │ │
-│  │ CPU │  │v3 · ONNX │  │ASR2-AED │  │small│  │14B-AWQ│  │  1.5    │ │
-│  └─────┘  └──────────┘  └─────────┘  └─────┘  └───────┘  └─────────┘ │
-│                                                                         │
-│  可选: 声纹VAD · 投机ASR · DTLN降噪 · ASR文本累积器 · 句子Cap          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🛠️ 核心工程优化
+### 核心工程优化
 
 <details>
 <summary><b>1. 流式 TTS 打断 — 160ms 精度</b></summary>
 
-`synthesize_stream()` 逐 chunk yield (~160ms)，每个 chunk 发送前检查 `_cancel_speaking`。
+`synthesize_stream()` 逐 chunk yield (~160ms),每个 chunk 发送前检查 `_cancel_speaking`。
 ```
 旧: TTS("整句") → 3s 音频一次推入 → 打断无效 ❌
-新: TTS.stream() → chunk→send→check → chunk→send→check → 打断!→停 ✅
+新: TTS.stream() → chunk→send→check → 打断!→停 ✅
 ```
 </details>
 
 <details>
 <summary><b>2. 事件循环让出 — SPEAKING 状态打断修复</b></summary>
 
-`asyncio.sleep(0.05)` 强制 50ms 间隔，事件循环有时间处理 1-2 个麦克风 chunk (32ms/个)。
+`asyncio.sleep(0.05)` 强制 50ms 间隔,事件循环有时间处理 1-2 个麦克风 chunk (32ms/个)。
 </details>
 
 <details>
 <summary><b>3. Turn 序列号音频过滤 — 消除在途帧</b></summary>
 
-服务端每轮回复前发 `audio_start(turn=N)`，打断时前端设 `playableTurn=0`，不匹配的帧全部丢弃。
+服务端每轮回复前发 `audio_start(turn=N)`,打断时前端设 `playableTurn=0`,不匹配的帧全部丢弃。
 </details>
 
 <details>
 <summary><b>4. 投机式预推理 — 节省 117ms</b></summary>
 
-用户停顿 160ms 时，Moonshine Tiny (27M, ONNX CPU) 后台启动投机 ASR，endpointing 确认后直接复用。
+用户停顿 160ms 时,Moonshine Tiny (27M, ONNX CPU) 后台启动投机 ASR,endpointing 确认后直接复用。
 </details>
 
 <details>
@@ -202,18 +126,42 @@ CUDA Graph · torch.compile<br>
 | 0.5~3s | 416ms | 正常对话 |
 | > 3s | 640ms | 长句 |
 
-短句 (≤4字) 不立即送 LLM，缓冲等后续语音拼接。
+短句 (≤4字) 不立即送 LLM,缓冲等后续语音拼接。
 </details>
 
 <details>
 <summary><b>6. PTT Demo Mode — 零 VAD 延迟</b></summary>
 
-按住说话 → 松手 → ASR → RAG → LLM → TTS，跳过 VAD/endpointing/filler，延迟只取决于推理速度。
+按住说话 → 松手 → ASR → RAG → LLM → TTS,跳过 VAD/endpointing/filler,延迟只取决于推理速度。
 </details>
 
 ---
 
-## 🚀 Quick Start
+## 🔮 路线 B:端到端 Omni (omni/)
+
+**核心思路**:MiniCPM-o 4.5 内置 Whisper-medium 音频编码器 + Qwen3-8B,直接理解音频,不需要独立 ASR 模块——消除级联误差传播,也消掉了 ASR 的 200ms。
+
+**vLLM 是成败关键**——同一个模型,不同推理方式差 89 倍:
+
+| | Raw Transformers | vLLM bf16 | vLLM AWQ-Marlin |
+|---|---|---|---|
+| TTFT | 3400ms | 48ms | **38ms** |
+| Tokens/sec | 15 | 48 | **109** |
+| VRAM | 19.8 GB | 22.6 GB | **10.5 GB** |
+
+实测 (RTX 4090 x2):LLM TTFT 50ms (p50) · TTS TTFA ~190ms · **首帧音频 ~250ms** · 109 tok/s。
+
+工程能力与级联版共享同一套底座:Speaker-Aware VAD (ECAPA-TDNN)、鲁棒打断、Turn 序列号过滤、RAG、多轮上下文。完整文档与 Quick Start 见 [omni/README.md](omni/README.md)。
+
+---
+
+## 🎓 Posttraining:话术定制
+
+[sft/](sft/) 目录包含外呼话术 LoRA SFT 全流程:数据构造 → LoRA 微调 → merge + GPTQ 量化 → 偏离度评测。单卡数小时、成本 ~$20,即可把通用模型定制成领域话术,评测数据在 [data/](data/)。
+
+---
+
+## 🚀 Quick Start (级联主力版)
 
 ```bash
 # 1. LLM 推理服务 (GPU 1)
@@ -222,7 +170,7 @@ CUDA_VISIBLE_DEVICES=1 python -m vllm.entrypoints.openai.api_server \
   --trust-remote-code --dtype auto --quantization awq \
   --gpu-memory-utilization 0.85 --max-model-len 4096 --enforce-eager --port 8100
 
-# 2. Voice Agent — Full-Duplex Mode (GPU 2+7)
+# 2. Voice Agent — Full-Duplex Mode
 CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
   USE_FIRERED_ASR=1 USE_SMART_TURN=1 python ws_server.py
 
@@ -230,6 +178,8 @@ CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
 DEMO_MODE=1 CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
   USE_FIRERED_ASR=1 python ws_server.py
 ```
+
+Omni 版启动见 [omni/README.md](omni/README.md)。
 
 ### 环境变量
 
@@ -244,21 +194,7 @@ DEMO_MODE=1 CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
 
 ---
 
-## 🔌 API
-
-| 端点 | 方法 | 说明 |
-|---|---|---|
-| `/ws/voice` | WS | 全双工 / PTT 语音通道 |
-| `/api/info` | GET | 模型与配置信息 |
-| `/api/rag/docs` | GET | 知识库文档列表 |
-| `/api/rag/query?q=` | GET | 检索测试 |
-| `/api/rag/reload` | POST | 热更新知识库 |
-
----
-
 ## 🔄 可替换组件
-
-> 每个组件可独立替换，无需改动其他模块：
 
 | 组件 | 当前 | 可替换为 |
 |---|---|---|
@@ -271,22 +207,34 @@ DEMO_MODE=1 CUDA_VISIBLE_DEVICES=2,7 ASR_DEVICE=cuda:1 TTS_DEVICE=cuda:0 \
 
 ---
 
+## 📁 仓库结构
+
+```
+├── ws_server.py            # 级联主力版:全双工 WS 服务 (VAD→ASR→RAG→LLM→TTS)
+├── engine/                 # ASR / TTS / LLM / VAD / 降噪 各组件引擎
+├── sft/                    # 话术定制:LoRA SFT → 量化 → 评测全流程
+├── data/                   # 外呼 benchmark 与 SFT 对比评测数据
+├── static/                 # 前端 (AudioWorklet 播放器)
+├── livekit_agent/          # LiveKit WebRTC 接入
+└── omni/                   # 端到端 Omni 路线 (原 Hybrid-VoiceAgent, 250ms)
+    ├── ws_server_hybrid.py #   vLLM Omni + VoxCPM 混合 pipeline
+    ├── engine/omni.py      #   MiniCPM-o 4.5 原生引擎
+    └── README.md           #   Omni 路线完整文档
+```
+
 ## 📋 版本演进
 
 | 版本 | 核心改动 |
 |---|---|
-| v1.0 | 基础全双工 pipeline，语音克隆 |
-| v2.0 | 5 状态机，句级流式，零爆音播放 |
-| v2.1 | 双层打断，自适应 endpointing |
-| v2.4 | FireRedASR2，流式 TTS 打断，事件循环修复 |
-| v2.9 | 崩溃恢复，Filler 激活，状态竞态修复 |
-| v3.0 | Qwen3-14B-AWQ，声纹门控，ASR 文本累积 |
-| **v3.1** | **PTT Demo Mode，句子 Cap，Watchdog 守护** |
+| v1.0 – v2.9 | 全双工 pipeline → 5 状态机 → 双层打断 → FireRedASR2 → 崩溃恢复 |
+| v3.0 | Qwen3-14B-AWQ,声纹门控,ASR 文本累积 |
+| v3.1 | PTT Demo Mode,句子 Cap,Watchdog 守护 |
+| **2026-08** | **合并端到端 Omni 路线 (原 Hybrid-VoiceAgent) 入 omni/,仓库更名 VoiceAgent-600ms** |
 
 ---
 
 <div align="center">
 
-**Apache 2.0 Licensed** · Built with ❤️ on RTX 4090
+**Apache 2.0** (根目录) · **MIT** ([omni/](omni/LICENSE)) · Built with ❤️ on RTX 4090
 
 </div>
